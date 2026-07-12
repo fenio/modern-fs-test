@@ -1,0 +1,35 @@
+{
+  "fs": "zfs",
+  "layout": "mirror-8k",
+  "kernel": "7.0.0-1007-azure",
+  "version": "zfs-2.4.1-1ubuntu5 zfs-kmod-2.4.1-1ubuntu5",
+  "date": "2026-07-12T15:35:44Z",
+  "devices": "loop",
+  "ndev": 4,
+  "calibration": {
+    "seqwrite_mbps": 408.29346084594727,
+    "randwrite_iops": 14738.301560
+  },
+  "results": {
+    "seqwrite_mbps": 167.44338130950928,
+    "randwrite_iops": 10537.782074,
+    "randread_iops": 6715.909470,
+    "aging_mbps": [
+      68.04891014099121,
+      68.33956146240234,
+      67.77865982055664,
+      67.58183670043945,
+      67.77865982055664,
+      67.52835655212402,
+      67.72486686706543,
+      66.7361831665039
+    ],
+    "snapshot_create_ms": 1190,
+    "compress_ratio": 3.16,
+    "compress_write_mbps": 238.4445219039917,
+    "reflink_ms": null,
+    "degraded_randwrite_iops": 10919.636012,
+    "degraded_randread_iops": 6796.373454,
+    "rebuild_s": 26
+  }
+}
