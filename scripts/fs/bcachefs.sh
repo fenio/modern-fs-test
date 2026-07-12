@@ -1,6 +1,7 @@
 # shellcheck shell=bash
 # bcachefs backend. Layout "replicas2": --replicas=2 across all devices.
-# Experimental: the runner kernel may lack bcachefs support entirely.
+# The kernel module ships as DKMS (see install-deps.sh) since bcachefs
+# left mainline in 6.17.
 
 FS_REFLINK=1
 

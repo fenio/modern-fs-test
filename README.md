@@ -29,7 +29,7 @@ Default matrix (4 devices, 2-copy redundancy, plus baselines):
 - **ZFS** — striped mirror pairs (raid10-like), at the default 128K recordsize
   and again at `recordsize=8k` — one-variable proof of how much of ZFS's
   small-random-write cost is configuration, not design
-- **bcachefs** — `--replicas=2` (experimental; kernel module built via DKMS from
+- **bcachefs** — `--replicas=2` (kernel module built via DKMS from
   [apt.bcachefs.org](https://apt.bcachefs.org/) since bcachefs left mainline in 6.17)
 
 ## How it runs
@@ -86,6 +86,24 @@ scripts/summarize.sh      JSON results → markdown table
 
 Adding a filesystem = one file in `scripts/fs/` implementing `fs_setup`,
 `fs_snapshot`, `fs_setup_compression`, `fs_compress_ratio`, `fs_teardown`.
+
+## Ideas, hints, and requests welcome
+
+This suite is deliberately open-ended — if you have opinions on **what to
+test and how**, please open an issue or PR:
+
+- workloads that would expose behavior the current phases miss
+  (databases, VM images, send/receive, metadata-heavy trees, …)
+- extra configurations and tuning you want measured: mount options,
+  recordsize/extent knobs, compression algorithms and levels, RAID
+  profiles, SLOG/special vdevs, `nodatacow`, …
+- fairness problems in the methodology — if a filesystem is being
+  measured in a way that misrepresents it, that's a bug here
+- additional filesystems or layered stacks (a backend is one small file
+  in `scripts/fs/`)
+
+Tuned variants sit next to the defaults in the same matrix (see
+`zfs mirror-8k`), so every suggestion becomes a directly comparable row.
 
 ## Roadmap
 

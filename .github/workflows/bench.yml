@@ -39,8 +39,6 @@ jobs:
             layout: mirror-8k
           - fs: bcachefs
             layout: replicas2
-            experimental: true
-    continue-on-error: ${{ matrix.experimental == true }}
     env:
       BENCH_DEVICES: ${{ inputs.devices }}
       BENCH_WIPE: ${{ inputs.devices != '' && '1' || '0' }}
