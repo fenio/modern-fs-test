@@ -192,6 +192,21 @@ h2 { font-size: 15px; font-weight: 650; margin: 40px 0 4px; }
 }
 .sortbtn:hover { color: var(--ink-2); border-color: var(--axis); }
 .sortbtn[aria-pressed="true"] { color: var(--ink); border-color: var(--axis); }
+.filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 18px 0 2px; }
+.fbtn {
+  background: none; border: 1px solid var(--ring); border-radius: 6px;
+  color: var(--ink-2); font: 12px system-ui, -apple-system, "Segoe UI", sans-serif;
+  padding: 3px 10px; cursor: pointer;
+}
+.fbtn:hover { border-color: var(--axis); }
+.fbtn[aria-pressed="true"] { color: var(--ink); border-color: var(--axis); background: var(--grid); }
+.fsep { color: var(--grid); margin: 0 2px; }
+.legend button.chip {
+  background: none; border: none; padding: 0; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+  color: var(--ink-2); font: 13px system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.legend button.chip[aria-pressed="false"] { opacity: 0.32; }
 .wide { overflow-x: auto; }
 svg.chart { display: block; width: 100%; height: auto; }
 svg text { font: 11.5px system-ui, -apple-system, "Segoe UI", sans-serif; }
@@ -261,14 +276,30 @@ const niceMax = m => { if (m <= 0) return 1;
   for (const k of [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]) if (k * p >= m) return k * p;
   return 10 * p; };
 
+// ---- view state -------------------------------------------------------------
+// Two AND-ed dimensions (family x layout class) + per-entity chip overrides.
+const COW = new Set(["btrfs", "bcachefs", "zfs"]);
+const famOf = e => e.id.split("/")[0];
+const layoutOf = e => e.id.endsWith("/single") ? "single" : "multi";
+const famAll = [...new Set(ents.map(famOf))];
+const famSel = new Set(famAll);
+const laySel = new Set(["multi", "single"]);
+const manual = new Map();  // chip overrides; cleared by any bulk action
+const isActive = e => manual.has(e.id)
+  ? manual.get(e.id)
+  : famSel.has(famOf(e)) && laySel.has(layoutOf(e));
+let logScale = false;
+const logMap = (v, lo, hi) =>
+  (Math.log10(v) - Math.log10(lo)) / (Math.log10(hi) - Math.log10(lo));
+
 // Horizontal bar card: one row per filesystem, value at the tip.
-function barCard(metric) {
-  const rows = ents.map(e => ({e, v: (latest.results[e.id] || {})[metric.key]}));
+function barCard(metric, view) {
+  const rows = view.map(e => ({e, v: (latest.results[e.id] || {})[metric.key]}));
   if (!rows.some(r => r.v != null)) return null;
   const card = el("div", {class: "card"});
   const head = el("div", {class: "cardhead"});
   head.appendChild(el("h3", {},
-    `${metric.label} <span class="unit">${metric.unit} · ${metric.better} is better</span>`));
+    `${metric.label} <span class="unit">${metric.unit} · ${metric.better} is better</span>`));
   const btn = el("button", {class: "sortbtn", type: "button",
     "aria-pressed": "false", title: "Toggle between best-first and grouped matrix order"}, "");
   head.appendChild(btn);
@@ -284,7 +315,7 @@ function barCard(metric) {
   let sorted = true;  // best-first by default
   const render = () => {
     btn.setAttribute("aria-pressed", String(sorted));
-    btn.textContent = sorted ? "\u21c5 matrix order" : "\u2713 best first";
+    btn.textContent = sorted ? "⇅ matrix order" : "✓ best first";
     holder.replaceChildren(drawBars(sorted ? bestFirst() : rows, metric));
   };
   btn.addEventListener("click", () => { sorted = !sorted; render(); });
@@ -295,7 +326,17 @@ function barCard(metric) {
 function drawBars(rows, metric) {
   const rowH = 24, labW = 118, W = 460, plotW = W - labW - 64;
   const H = rows.length * rowH + 8;
-  const max = niceMax(Math.max(...rows.map(r => r.v).filter(v => v != null)));
+  const present = rows.map(r => r.v).filter(v => v != null);
+  const max = niceMax(Math.max(...present, 0));
+  const pos = present.filter(v => v > 0);
+  let lo = max / 10;
+  if (logScale && pos.length) {
+    lo = Math.pow(10, Math.floor(Math.log10(Math.min(...pos))));
+    if (lo >= max) lo = max / 10;
+  }
+  const frac = v => logScale
+    ? Math.max(0, logMap(Math.max(v, lo), lo, max))
+    : v / max;
   const svg = svgel("svg", {class: "chart", viewBox: `0 0 ${W} ${H}`, role: "img",
     "aria-label": metric.label});
   rows.forEach(({e, v}, i) => {
@@ -313,12 +354,11 @@ function drawBars(rows, metric) {
       svg.appendChild(na);
       return;
     }
-    const w = Math.max(2, plotW * v / max), bh = 16, r = Math.min(4, w);
+    const w = Math.max(2, plotW * frac(v)), bh = 16, r = Math.min(4, w);
     // square at baseline, 4px rounded data-end
     const p = `M${labW},${y + 3} h${w - r} a${r},${r} 0 0 1 ${r},${r} v${bh - 2 * r}
       a${r},${r} 0 0 1 ${-r},${r} h${-(w - r)} z`;
-    const bar = svgel("path", {d: p, fill: color(e)});
-    svg.appendChild(bar);
+    svg.appendChild(svgel("path", {d: p, fill: color(e)}));
     const val = svgel("text", {x: labW + w + 6, y: y + 15.5, fill: css("--ink")});
     val.textContent = fmt(v);
     svg.appendChild(val);
@@ -333,15 +373,26 @@ function drawBars(rows, metric) {
   return svg;
 }
 
-// Line chart with hover crosshair. series: [{name, color, points:[{x,y}]}]
+// Line chart with hover crosshair. series: [{name, color, dash, keyHtml, points:[{x,y}]}]
 function lineChart(series, xLabels, unit, height) {
   const W = 720, H = height || 300, L = 52, R = 16, T = 12, B = 30;
   const pw = W - L - R, ph = H - T - B;
   const allY = series.flatMap(s => s.points.map(p => p.y)).filter(v => v != null);
   const maxY = niceMax(Math.max(...allY, 0));
+  const pos = allY.filter(v => v > 0);
+  let lo = maxY / 10;
+  if (logScale && pos.length) {
+    lo = Math.pow(10, Math.floor(Math.log10(Math.min(...pos))));
+    if (lo >= maxY) lo = maxY / 10;
+  }
   const nx = xLabels.length;
   const X = i => L + (nx === 1 ? pw / 2 : pw * i / (nx - 1));
-  const Y = v => T + ph * (1 - v / maxY);
+  const Y = v => logScale
+    ? T + ph * (1 - Math.max(0, logMap(Math.max(v, lo), lo, maxY)))
+    : T + ph * (1 - v / maxY);
+  const gval = g => logScale
+    ? Math.pow(10, Math.log10(maxY) - (Math.log10(maxY) - Math.log10(lo)) * g / 4)
+    : maxY * (1 - g / 4);
   const svg = svgel("svg", {class: "chart", viewBox: `0 0 ${W} ${H}`});
   for (let g = 0; g <= 4; g++) {  // hairline solid grid
     const y = T + ph * g / 4;
@@ -349,7 +400,7 @@ function lineChart(series, xLabels, unit, height) {
       stroke: css("--grid"), "stroke-width": 1}));
     const t = svgel("text", {x: L - 8, y: y + 4, "text-anchor": "end",
       fill: css("--muted"), style: "font-variant-numeric:tabular-nums"});
-    t.textContent = fmt(maxY * (1 - g / 4));
+    t.textContent = fmt(gval(g));
     svg.appendChild(t);
   }
   const tickStep = Math.max(1, Math.ceil(nx / 10));
@@ -399,70 +450,7 @@ function lineChart(series, xLabels, unit, height) {
   return svg;
 }
 
-function legend(parent) {
-  const lg = el("div", {class: "legend"});
-  ents.forEach((e, i) =>
-    lg.appendChild(el("span", {}, `${key(e)}${e.id}`)));
-  parent.appendChild(lg);
-}
-
-const app = document.getElementById("app");
-const dt = (latest.date || "").replace("T", " ").replace("Z", " UTC");
-app.appendChild(el("h1", {}, "modern-fs-benchmark"));
-app.appendChild(el("p", {class: "sub"},
-  `Multi-device CoW filesystems under workloads classic benchmarks skip —
-   latest run ${dt}, kernel ${latest.kernel}, ${DATA.runs.length} run(s) recorded
-   · <a href="${DATA.repo}">repository</a>`));
-app.appendChild(el("p", {class: "note"},
-  "CI runs use loop devices on shared ephemeral VMs (one VM per filesystem): compare shapes and ratios, not absolute MB/s. Each job records a host-calibration anchor — see the table."));
-legend(app);
-
-app.appendChild(el("h2", {}, "Latest run"));
-app.appendChild(el("p", {class: "note"}, "One card per metric, sorted best-first \u2014 the per-card button switches to grouped matrix order. Every value also appears in the table below."));
-const grid = el("div", {class: "grid"});
-DATA.metrics.forEach(m => { const c = barCard(m); if (c) grid.appendChild(c); });
-app.appendChild(grid);
-
-app.appendChild(el("h2", {}, "Snapshot aging"));
-app.appendChild(el("p", {class: "note"},
-  "Random-overwrite bandwidth (MB/s) per iteration while snapshots accumulate — flat is good, falling is CoW fragmentation cost."));
-const agingCard = el("div", {class: "card"});
-const iters = Math.max(...ents.map(e => ((latest.results[e.id] || {}).aging_mbps || []).length));
-if (iters > 0) {
-  const xl = Array.from({length: iters}, (_, i) => `iter ${i + 1}`);
-  agingCard.appendChild(lineChart(
-    ents.map(e => ({name: e.id, color: color(e), dash: dash(e), keyHtml: key(e),
-      points: ((latest.results[e.id] || {}).aging_mbps || []).map((v, j) => ({x: j, y: v}))})),
-    xl, "MB/s"));
-}
-app.appendChild(agingCard);
-
-app.appendChild(el("h2", {}, "Trends across runs"));
-if (DATA.runs.length < 2) {
-  app.appendChild(el("p", {class: "note"},
-    "Recorded once — trend lines appear as more runs accumulate (weekly cron + every push)."));
-} else {
-  app.appendChild(el("p", {class: "note"}, "One card per metric, one point per run."));
-}
-if (DATA.runs.length >= 2) {
-  const tgrid = el("div", {class: "grid"});
-  const xl = DATA.runs.map(r => (r.date || "").slice(5, 10) || r.id);
-  DATA.metrics.forEach(m => {
-    const series = ents.map(e => ({name: e.id, color: color(e), dash: dash(e), keyHtml: key(e),
-      points: DATA.runs.map((r, j) => ({x: j, y: (r.results[e.id] || {})[m.key]}))}));
-    if (!series.some(s => s.points.some(p => p.y != null))) return;
-    const card = el("div", {class: "card"});
-    card.appendChild(el("h3", {}, `${m.label} <span class="unit">${m.unit}</span>`));
-    card.appendChild(lineChart(series, xl, m.unit, 220));
-    tgrid.appendChild(card);
-  });
-  app.appendChild(tgrid);
-}
-
-app.appendChild(el("h2", {}, "Table view"));
-app.appendChild(el("p", {class: "note"}, "Latest run, all metrics — click a column header to sort. calib = host-disk anchor measured before the filesystem exists (VM noise indicator)."));
-const wrap = el("div", {class: "card wide"});
-const tbl = el("table");
+// ---- table (sort state survives rebuilds) ------------------------------------
 const cols = [
   {label: "filesystem", str: true, get: (e, r, c) => e.id},
   ...DATA.metrics.map(m => ({label: m.label, unit: m.unit, get: (e, r, c) => r[m.key]})),
@@ -475,43 +463,191 @@ const cols = [
   {label: "tools / module version", str: true, get: (e, r, c) => r.version},
 ];
 let sortCol = null, sortDir = 1;  // null = matrix order
-function renderTable() {
-  tbl.innerHTML = "";
-  const head = el("tr");
-  cols.forEach((col, ci) => {
-    const arrow = sortCol === ci ? (sortDir > 0 ? " ▲" : " ▼") : "";
-    const th = el("th", {style: "cursor:pointer;user-select:none",
-      "aria-sort": sortCol === ci ? (sortDir > 0 ? "ascending" : "descending") : "none"},
-      `${col.label}${arrow}${col.unit ? `<br><span class="unit">${col.unit}</span>` : ""}`);
-    th.addEventListener("click", () => {
-      if (sortCol === ci) sortDir = -sortDir;
-      else { sortCol = ci; sortDir = col.str ? 1 : -1; }  // numbers: biggest first
-      renderTable();
+function buildTable(view) {
+  const tbl = el("table");
+  const draw = () => {
+    tbl.innerHTML = "";
+    const head = el("tr");
+    cols.forEach((col, ci) => {
+      const arrow = sortCol === ci ? (sortDir > 0 ? " ▲" : " ▼") : "";
+      const th = el("th", {style: "cursor:pointer;user-select:none",
+        "aria-sort": sortCol === ci ? (sortDir > 0 ? "ascending" : "descending") : "none"},
+        `${col.label}${arrow}${col.unit ? `<br><span class="unit">${col.unit}</span>` : ""}`);
+      th.addEventListener("click", () => {
+        if (sortCol === ci) sortDir = -sortDir;
+        else { sortCol = ci; sortDir = col.str ? 1 : -1; }  // numbers: biggest first
+        draw();
+      });
+      head.appendChild(th);
     });
-    head.appendChild(th);
-  });
-  tbl.appendChild(head);
-  const rows = ents.map(e => {
-    const r = latest.results[e.id] || {}, c = r.calibration || {};
-    return {e, vals: cols.map(col => col.get(e, r, c))};
-  });
-  if (sortCol != null) rows.sort((a, b) => {
-    const x = a.vals[sortCol], y = b.vals[sortCol];
-    if (x == null && y == null) return 0;
-    if (x == null) return 1;  // nulls last, either direction
-    if (y == null) return -1;
-    return (typeof x === "string" ? x.localeCompare(y) : x - y) * sortDir;
-  });
-  rows.forEach(({e, vals}) => {
-    tbl.appendChild(el("tr", {},
-      `<td><span style="display:inline-flex;align-items:center;gap:7px">${key(e)}${e.id}</span></td>` +
-      vals.slice(1, cols.length - 1).map(v => `<td>${fmt(v)}</td>`).join("") +
-      `<td style="text-align:left">${vals[cols.length - 1] || "—"}</td>`));
-  });
+    tbl.appendChild(head);
+    const rows = view.map(e => {
+      const r = latest.results[e.id] || {}, c = r.calibration || {};
+      return {e, vals: cols.map(col => col.get(e, r, c))};
+    });
+    if (sortCol != null) rows.sort((a, b) => {
+      const x = a.vals[sortCol], y = b.vals[sortCol];
+      if (x == null && y == null) return 0;
+      if (x == null) return 1;  // nulls last, either direction
+      if (y == null) return -1;
+      return (typeof x === "string" ? x.localeCompare(y) : x - y) * sortDir;
+    });
+    rows.forEach(({e, vals}) => {
+      tbl.appendChild(el("tr", {},
+        `<td><span style="display:inline-flex;align-items:center;gap:7px">${key(e)}${e.id}</span></td>` +
+        vals.slice(1, cols.length - 1).map(v => `<td>${fmt(v)}</td>`).join("") +
+        `<td style="text-align:left">${vals[cols.length - 1] || "—"}</td>`));
+    });
+  };
+  draw();
+  return tbl;
 }
-renderTable();
-wrap.appendChild(tbl);
-app.appendChild(wrap);
+
+// ---- filters + page assembly --------------------------------------------------
+const app = document.getElementById("app");
+const dt = (latest.date || "").replace("T", " ").replace("Z", " UTC");
+app.appendChild(el("h1", {}, "modern-fs-benchmark"));
+app.appendChild(el("p", {class: "sub"},
+  `Multi-device CoW filesystems under workloads classic benchmarks skip —
+   latest run ${dt}, kernel ${latest.kernel}, ${DATA.runs.length} run(s) recorded
+   · <a href="${DATA.repo}">repository</a>`));
+app.appendChild(el("p", {class: "note"},
+  "CI runs use loop devices on shared ephemeral VMs (one VM per filesystem): compare shapes and ratios, not absolute MB/s. Each job records a host-calibration anchor — see the table."));
+
+const chipBtns = new Map();
+const famBtns = new Map();
+const layBtns = new Map();
+let linBtn, logBtn;
+function syncControls() {
+  chipBtns.forEach((b, id) =>
+    b.setAttribute("aria-pressed", String(isActive(ents.find(e => e.id === id)))));
+  famBtns.forEach((b, f) => b.setAttribute("aria-pressed", String(famSel.has(f))));
+  layBtns.forEach((b, l) => b.setAttribute("aria-pressed", String(laySel.has(l))));
+  linBtn.setAttribute("aria-pressed", String(!logScale));
+  logBtn.setAttribute("aria-pressed", String(logScale));
+}
+{
+  const bar = el("div", {class: "filters"});
+  const mk = (label, title) => el("button", {class: "fbtn", type: "button",
+    title: title || ""}, label);
+  // presets reset both dimensions
+  [["All", famAll],
+   ["CoW", famAll.filter(f => COW.has(f))],
+   ["Classic", famAll.filter(f => !COW.has(f))],
+  ].forEach(([label, fams]) => {
+    const b = mk(label, "Preset: select these families, both layouts");
+    b.addEventListener("click", () => {
+      manual.clear();
+      famSel.clear(); fams.forEach(f => famSel.add(f));
+      laySel.add("multi"); laySel.add("single");
+      syncControls(); rebuild();
+    });
+    bar.appendChild(b);
+  });
+  bar.appendChild(el("span", {class: "fsep"}, "|"));
+  famAll.forEach(f => {
+    const b = mk(f, "Toggle this filesystem family");
+    b.addEventListener("click", () => {
+      manual.clear();
+      if (famSel.has(f)) famSel.delete(f); else famSel.add(f);
+      syncControls(); rebuild();
+    });
+    famBtns.set(f, b);
+    bar.appendChild(b);
+  });
+  bar.appendChild(el("span", {class: "fsep"}, "|"));
+  [["multi", "multi-device"], ["single", "single-device"]].forEach(([cls, label]) => {
+    const b = mk(label, "Toggle this layout class");
+    b.addEventListener("click", () => {
+      manual.clear();
+      if (laySel.has(cls)) laySel.delete(cls); else laySel.add(cls);
+      syncControls(); rebuild();
+    });
+    layBtns.set(cls, b);
+    bar.appendChild(b);
+  });
+  bar.appendChild(el("span", {class: "fsep"}, "|"));
+  linBtn = mk("Linear", "Linear value scale");
+  logBtn = mk("Log scale", "Logarithmic value scale");
+  linBtn.addEventListener("click", () => { logScale = false; syncControls(); rebuild(); });
+  logBtn.addEventListener("click", () => { logScale = true; syncControls(); rebuild(); });
+  bar.appendChild(linBtn); bar.appendChild(logBtn);
+  app.appendChild(bar);
+  const lg = el("div", {class: "legend"});
+  ents.forEach(e => {
+    const b = el("button", {class: "chip", type: "button", "aria-pressed": "true",
+      title: "Click to show/hide just this one"}, `${key(e)}${e.id}`);
+    b.addEventListener("click", () => {
+      manual.set(e.id, !isActive(e));
+      syncControls(); rebuild();
+    });
+    chipBtns.set(e.id, b);
+    lg.appendChild(b);
+  });
+  app.appendChild(lg);
+}
+
+const content = el("div");
+app.appendChild(content);
+
+function rebuild() {
+  const view = ents.filter(isActive);
+  content.replaceChildren();
+  if (!view.length) {
+    content.appendChild(el("p", {class: "note", style: "margin-top:24px"},
+      "Nothing selected — pick filesystems above."));
+    return;
+  }
+
+  content.appendChild(el("h2", {}, "Latest run"));
+  content.appendChild(el("p", {class: "note"},
+    "One card per metric, sorted best-first — the per-card button switches to grouped matrix order. Every value also appears in the table below."));
+  const grid = el("div", {class: "grid"});
+  DATA.metrics.forEach(m => { const c = barCard(m, view); if (c) grid.appendChild(c); });
+  content.appendChild(grid);
+
+  content.appendChild(el("h2", {}, "Snapshot aging"));
+  content.appendChild(el("p", {class: "note"},
+    "Random-overwrite bandwidth (MB/s) per iteration while snapshots accumulate — flat is good, falling is CoW fragmentation cost. Snapshot counts differ by design: 100 where the technology allows, 10 for default-recordsize ZFS, 8 for LVM."));
+  const agingCard = el("div", {class: "card"});
+  const iters = Math.max(...view.map(e => ((latest.results[e.id] || {}).aging_mbps || []).length), 0);
+  if (iters > 0) {
+    const xl = Array.from({length: iters}, (_, i) => `iter ${i + 1}`);
+    agingCard.appendChild(lineChart(
+      view.map(e => ({name: e.id, color: color(e), dash: dash(e), keyHtml: key(e),
+        points: ((latest.results[e.id] || {}).aging_mbps || []).map((v, j) => ({x: j, y: v}))})),
+      xl, "MB/s"));
+  }
+  content.appendChild(agingCard);
+
+  content.appendChild(el("h2", {}, "Trends across runs"));
+  if (DATA.runs.length < 2) {
+    content.appendChild(el("p", {class: "note"},
+      "Recorded once — trend lines appear as more runs accumulate (weekly cron + every push)."));
+  } else {
+    content.appendChild(el("p", {class: "note"}, "One card per metric, one point per run."));
+    const tgrid = el("div", {class: "grid"});
+    const xl = DATA.runs.map(r => (r.date || "").slice(5, 10) || r.id);
+    DATA.metrics.forEach(m => {
+      const series = view.map(e => ({name: e.id, color: color(e), dash: dash(e), keyHtml: key(e),
+        points: DATA.runs.map((r, j) => ({x: j, y: (r.results[e.id] || {})[m.key]}))}));
+      if (!series.some(s => s.points.some(p => p.y != null))) return;
+      const card = el("div", {class: "card"});
+      card.appendChild(el("h3", {}, `${m.label} <span class="unit">${m.unit}</span>`));
+      card.appendChild(lineChart(series, xl, m.unit, 220));
+      tgrid.appendChild(card);
+    });
+    content.appendChild(tgrid);
+  }
+
+  content.appendChild(el("h2", {}, "Table view"));
+  content.appendChild(el("p", {class: "note"},
+    "Latest run, all metrics — click a column header to sort. calib = host-disk anchor measured before the filesystem exists (VM noise indicator)."));
+  const wrap = el("div", {class: "card wide"});
+  wrap.appendChild(buildTable(view));
+  content.appendChild(wrap);
+}
+rebuild();
 
 app.appendChild(el("footer", {},
   `Generated by <a href="${DATA.repo}">modern-fs-benchmark</a>. Methodology, caveats,
