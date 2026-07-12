@@ -26,6 +26,13 @@ fs_snapshot() {
   bcachefs subvolume snapshot "$DATA" "$MNT/$1" >/dev/null
 }
 
+fs_snapshot_delete_all() {
+  local i
+  for i in $(seq 1 "$1"); do
+    bcachefs subvolume delete "$MNT/snap$i"
+  done
+}
+
 fs_setup_compression() {
   REPLICAS=2
   [ "${LAYOUT:-replicas2}" = single ] && REPLICAS=1

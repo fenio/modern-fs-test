@@ -19,6 +19,10 @@ fs_snapshot() {
   btrfs subvolume snapshot -r "$DATA" "$MNT/$1" >/dev/null
 }
 
+fs_snapshot_delete_all() {
+  btrfs subvolume delete "$MNT"/snap[0-9]* >/dev/null
+}
+
 fs_setup_compression() {
   # compress-force bypasses the compressibility heuristic; the property-based
   # approach left data uncompressed on 6.17 (ratio 1.0 in CI)

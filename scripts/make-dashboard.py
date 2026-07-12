@@ -19,7 +19,7 @@ import sys
 # by line style (solid / dashed / dotted) plus labels and tooltips. Slots are
 # pinned explicitly — color follows the family forever (bcachefs=yellow was
 # chosen over green, which read too close to xfs's aqua).
-FAMILY_SLOT = {"ext4": 0, "xfs": 1, "bcachefs": 2, "btrfs": 3, "zfs": 4}
+FAMILY_SLOT = {"ext4": 0, "xfs": 1, "zfs": 2, "btrfs": 3, "bcachefs": 4}
 ENTITY_ORDER = [
     "ext4/single",
     "ext4/md-raid10",
@@ -27,13 +27,13 @@ ENTITY_ORDER = [
     "xfs/single",
     "xfs/md-raid10",
     "xfs/lvm-raid10",
+    "zfs/mirror",
+    "zfs/mirror-8k",
+    "zfs/single",
     "btrfs/raid1",
     "btrfs/single",
     "bcachefs/replicas2",
     "bcachefs/single",
-    "zfs/mirror",
-    "zfs/mirror-8k",
-    "zfs/single",
 ]
 
 METRICS = [
@@ -41,6 +41,9 @@ METRICS = [
     ("randwrite_iops", "Random write, 4k + fsync", "IOPS", "higher"),
     ("randread_iops", "Random read, 4k cold cache", "IOPS", "higher"),
     ("snapshot_create_ms", "Snapshot create", "ms", "lower"),
+    ("snapshot_delete_ms", "Snapshot delete (all)", "ms", "lower"),
+    ("reclaim_s", "Space reclaim after delete", "s", "lower"),
+    ("reclaim_write_mbps", "Write during reclaim", "MB/s", "higher"),
     ("compress_ratio", "zstd compression ratio", "x", "higher"),
     ("compress_write_mbps", "Compressible-data write", "MB/s", "higher"),
     ("reflink_ms", "Reflink copy of 2G", "ms", "lower"),
@@ -143,16 +146,17 @@ TEMPLATE = r"""<!doctype html>
   --surface: #fcfcfb; --page: #f9f9f7;
   --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
   --grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11,11,11,0.10);
-  --s1:#2a78d6; --s2:#1baf7a; --s3:#eda100; --s4:#008300;
-  --s5:#4a3aa7; --s6:#e34948; --s7:#e87ba4; --s8:#eb6834;
+  /* family slots: ext4, xfs, zfs, btrfs, bcachefs — validated per mode */
+  --s1:#1c5cab; --s2:#3987e5; --s3:#e34948; --s4:#0d8c34;
+  --s5:#eda100; --s6:#4a3aa7; --s7:#e87ba4; --s8:#eb6834;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --surface: #1a1a19; --page: #0d0d0d;
     --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+    --s1:#256abf; --s2:#4d92e5; --s3:#e66767; --s4:#0d8c34;
+    --s5:#c98500; --s6:#9085e9; --s7:#d55181; --s8:#d95926;
     --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10);
-    --s1:#3987e5; --s2:#199e70; --s3:#c98500; --s4:#008300;
-    --s5:#9085e9; --s6:#e66767; --s7:#d55181; --s8:#d95926;
   }
 }
 * { box-sizing: border-box; margin: 0; }

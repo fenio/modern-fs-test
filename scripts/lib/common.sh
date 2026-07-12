@@ -59,6 +59,15 @@ fs_drop_caches() {
 fs_degrade() { return 1; }
 fs_rebuild() { return 1; }
 
+# Snapshot-reclaim hooks. fs_snapshot_delete_all <count> deletes the aging
+# snapshots (snap1..snapN); fs_free_bytes prints reclaimable free space —
+# df for filesystems, VG free space for LVM (its snapshots live outside
+# the filesystem).
+fs_snapshot_delete_all() { return 1; }
+fs_free_bytes() {
+  df -B1 --output=avail "$MNT" | tail -1 | tr -d ' '
+}
+
 # Scrub hook: run a full scrub/check to completion, print "<found> <repaired>"
 # counts on stdout (fs-specific units; "null" when unparseable), diagnostics
 # to stderr. Default: unsupported.

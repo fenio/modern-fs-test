@@ -7,8 +7,8 @@ echo "### Filesystem benchmark results"
 echo
 echo "Loop-device numbers are only meaningful *relative to each other within one run* — see README."
 echo
-echo "| fs | layout | kernel | seq write MB/s | rand write IOPS | rand read IOPS | snap create ms | aging MB/s (first → last) | zstd ratio | zstd write MB/s | reflink ms | degraded wr IOPS | rebuild s | scrub s | data intact |"
-echo "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"
+echo "| fs | layout | kernel | seq write MB/s | rand write IOPS | rand read IOPS | snap create ms | snap delete ms | reclaim s | aging MB/s (first → last) | zstd ratio | zstd write MB/s | reflink ms | degraded wr IOPS | rebuild s | scrub s | data intact |"
+echo "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"
 
 for f in "$@"; do
   [ -f "$f" ] || continue
@@ -19,6 +19,8 @@ for f in "$@"; do
     "\(.results.randwrite_iops | round) | " +
     "\(.results.randread_iops | round) | " +
     "\(.results.snapshot_create_ms | fmt) | " +
+    "\(.results.snapshot_delete_ms | fmt) | " +
+    "\(.results.reclaim_s | fmt) | " +
     "\(.results.aging_mbps | first | round) → \(.results.aging_mbps | last | round) | " +
     "\(.results.compress_ratio | fmt) | " +
     "\(.results.compress_write_mbps | fmt) | " +

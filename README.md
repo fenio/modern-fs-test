@@ -17,6 +17,7 @@ This suite benchmarks the *machinery*:
 | seq / rand write, rand read | baseline throughput on the chosen redundancy layout |
 | snapshot aging | random-overwrite bandwidth as snapshots accumulate (CoW fragmentation cost) |
 | snapshot create | metadata cost of taking a snapshot |
+| snapshot delete + reclaim | delete latency, foreground write bandwidth while background cleaning runs, time until the space actually returns |
 | compression | zstd ratio + write throughput on 75%-compressible data |
 | reflink | `cp --reflink=always` of a large file |
 | degraded + rebuild | fail one device: IO while degraded, then time the rebuild onto a spare |
@@ -147,9 +148,6 @@ Tuned variants sit next to the defaults in the same matrix (see
 
 CoW-specific phases (the behaviors nothing mainstream benchmarks):
 
-- [ ] **Snapshot delete / space reclaim**: delete latency, time until the
-      space actually returns, and foreground IO impact while background
-      reclaim runs (btrfs cleaner thread vs ZFS vs bcachefs vs `lvremove`)
 - [ ] **fsync tail latency**: p99/p99.9 completion latency from the existing
       random-write phase — CoW transaction commits (ZFS txg, btrfs commit
       interval) cause periodic spikes that averages hide

@@ -71,6 +71,7 @@ RANDREAD_IOPS=$(jq '.jobs[0].read.iops' "$out")
 log "phase: aging, $AGING_ITERS iterations of snapshot + $AGING_IO overwrite"
 fio --name=agingprep --filename="$DATA/aging.dat" --rw=write --bs=1M \
   --size="$AGING_SIZE" --end_fsync=1 --output=/dev/null
+FREE_BEFORE_AGING=$(fs_free_bytes)
 AGING_BW=()
 SNAP_MS=()
 SNAPSHOTS_OK=1
@@ -89,7 +90,42 @@ for i in $(seq 1 "$AGING_ITERS"); do
   AGING_BW+=("$(jq '.jobs[0].write.bw_bytes / 1048576' "$out")")
 done
 
-# --- Phase 5: compression (zstd, 75%-compressible data) -------------------
+# --- Phase 5: snapshot delete + space reclaim ------------------------------
+# Deleting snapshots is where CoW filesystems differ wildly: the delete
+# call may return instantly while background cleaning (btrfs cleaner, ZFS
+# async destroy) reclaims the pinned extents. Measured: delete latency,
+# foreground write bandwidth during reclaim (same workload as one aging
+# iteration), and time until the space is actually back.
+SNAP_DELETE_MS=null
+RECLAIM_S=null
+RECLAIM_WRITE_MBPS=null
+if [ "$SNAPSHOTS_OK" = 1 ] && [ "${#SNAP_MS[@]}" -gt 0 ]; then
+  log "phase: delete $AGING_ITERS snapshots + reclaim"
+  t0=$(now_ms)
+  if fs_snapshot_delete_all "$AGING_ITERS"; then
+    SNAP_DELETE_MS=$(( $(now_ms) - t0 ))
+    out=$(fio_json reclaim-write --filename="$DATA/aging.dat" --rw=randwrite \
+      --bs=4k --size="$AGING_SIZE" --io_size="$AGING_IO" --end_fsync=1)
+    RECLAIM_WRITE_MBPS=$(jq '.jobs[0].write.bw_bytes / 1048576' "$out")
+    # 85%: post-reclaim free never quite matches pre-aging (CoW'd file
+    # generations, metadata growth) — 90% missed by <1% in testing
+    target=$(( FREE_BEFORE_AGING * 85 / 100 ))
+    for i in $(seq 1 300); do
+      if [ "$(fs_free_bytes)" -ge "$target" ]; then
+        RECLAIM_S=$(( ($(now_ms) - t0) / 1000 ))
+        break
+      fi
+      sleep 1
+    done
+    [ "$RECLAIM_S" = null ] \
+      && log "space not back within 300s (free: $(( $(fs_free_bytes) / 1048576 ))M, target: $(( target / 1048576 ))M)"
+    log "snapshot delete: ${SNAP_DELETE_MS}ms, reclaim: ${RECLAIM_S}s"
+  else
+    log "snapshot delete unsupported on $FS ($LAYOUT)"
+  fi
+fi
+
+# --- Phase 6: compression (zstd, 75%-compressible data) -------------------
 log "phase: compression"
 COMP_RATIO=null
 COMP_MBPS=null
@@ -198,6 +234,9 @@ jq -n \
   --argjson randread_iops "$RANDREAD_IOPS" \
   --argjson aging_mbps "$AGING_JSON" \
   --argjson snapshot_create_ms "$SNAP_AVG" \
+  --argjson snapshot_delete_ms "$SNAP_DELETE_MS" \
+  --argjson reclaim_s "$RECLAIM_S" \
+  --argjson reclaim_write_mbps "$RECLAIM_WRITE_MBPS" \
   --argjson compress_ratio "$COMP_RATIO" \
   --argjson compress_write_mbps "$COMP_MBPS" \
   --argjson reflink_ms "$REFLINK_MS" \
@@ -219,6 +258,9 @@ jq -n \
               randread_iops: $randread_iops,
               aging_mbps: $aging_mbps,
               snapshot_create_ms: $snapshot_create_ms,
+              snapshot_delete_ms: $snapshot_delete_ms,
+              reclaim_s: $reclaim_s,
+              reclaim_write_mbps: $reclaim_write_mbps,
               compress_ratio: $compress_ratio,
               compress_write_mbps: $compress_write_mbps,
               reflink_ms: $reflink_ms,

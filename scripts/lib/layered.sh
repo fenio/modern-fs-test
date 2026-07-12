@@ -65,6 +65,27 @@ layered_snapshot() {
   esac
 }
 
+layered_snapshot_delete_all() {
+  case "${LAYOUT:-single}" in
+    lvm-*)
+      local i
+      for i in $(seq 1 "$1"); do
+        lvremove -fy "$VG/snap$i" >&2
+      done
+      ;;
+    *) return 1 ;;
+  esac
+}
+
+# LVM snapshots live in the VG, not in filesystem free space — reclaim
+# is measured against VG free bytes for the lvm layouts.
+layered_free_bytes() {
+  case "${LAYOUT:-single}" in
+    lvm-*) vgs --noheadings --units b --nosuffix -o vg_free "$VG" | tr -d ' ' | cut -d. -f1 ;;
+    *) df -B1 --output=avail "$MNT" | tail -1 | tr -d ' ' ;;
+  esac
+}
+
 layered_degrade() {
   case "${LAYOUT:-single}" in
     md-*)

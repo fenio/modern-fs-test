@@ -35,6 +35,13 @@ fs_snapshot() {
   zfs snapshot "$POOL/data@$1"
 }
 
+fs_snapshot_delete_all() {
+  local i
+  for i in $(seq 1 "$1"); do
+    zfs destroy "$POOL/data@snap$i"
+  done
+}
+
 fs_setup_compression() {
   # $1 must be a path under $MNT; create a dataset there
   zfs create -o compression=zstd "$POOL/${1##*/}"

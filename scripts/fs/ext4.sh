@@ -16,6 +16,8 @@ fs_setup() {
 }
 
 fs_snapshot() { layered_snapshot "$@"; }
+fs_snapshot_delete_all() { layered_snapshot_delete_all "$@"; }
+fs_free_bytes() { layered_free_bytes; }
 fs_setup_compression() { return 1; }
 fs_compress_ratio() { echo null; }
 fs_degrade() { layered_degrade; }
