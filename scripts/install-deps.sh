@@ -9,7 +9,7 @@ apt-get update -qq
 
 case "$FS" in
   ext4)
-    apt-get install -yqq fio jq
+    apt-get install -yqq fio jq mdadm lvm2
     ;;
   btrfs)
     apt-get install -yqq fio jq btrfs-progs btrfs-compsize

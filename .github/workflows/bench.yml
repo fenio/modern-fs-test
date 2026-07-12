@@ -27,6 +27,10 @@ jobs:
         include:
           - fs: ext4
             layout: single
+          - fs: ext4
+            layout: md-raid10
+          - fs: ext4
+            layout: lvm-raid10
           - fs: btrfs
             layout: raid1
           - fs: zfs

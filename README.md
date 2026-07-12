@@ -19,9 +19,12 @@ This suite benchmarks the *machinery*:
 | compression | zstd ratio + write throughput on 75%-compressible data |
 | reflink | `cp --reflink=always` of a large file |
 
-Default matrix (4 devices, 2-copy redundancy, plus a baseline):
+Default matrix (4 devices, 2-copy redundancy, plus baselines):
 
-- **ext4** — single device (the "what does CoW cost" anchor)
+- **ext4 single** — one device, the "what does any of this cost" anchor
+- **ext4 on md raid10** — the classic layered stack
+- **ext4 on LVM raid10** — layered stack with block-layer CoW snapshots,
+  so the snapshot-aging phase is comparable with the native-CoW filesystems
 - **btrfs** — `-d raid1 -m raid1`
 - **ZFS** — striped mirror pairs (raid10-like)
 - **bcachefs** — `--replicas=2` (experimental; kernel module built via DKMS from
