@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: '17 4 * * 1'  # weekly, Monday 04:17 UTC
+    - cron: '17 * * * *'  # hourly at :17 (GitHub may delay/skip under load)
   workflow_dispatch:
     inputs:
       runs_on:
