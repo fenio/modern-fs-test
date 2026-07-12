@@ -1,0 +1,48 @@
+{
+  "fs": "xfs",
+  "layout": "lvm-raid10",
+  "kernel": "7.0.0-1007-azure",
+  "version": "mkfs.xfs version 6.18.0",
+  "date": "2026-07-12T20:57:42Z",
+  "devices": "loop",
+  "ndev": 4,
+  "calibration": {
+    "seqwrite_mbps": 409.7639055252075,
+    "randwrite_iops": 14623.025132
+  },
+  "results": {
+    "seqwrite_mbps": 191.79621601104736,
+    "randwrite_iops": 4120.929302,
+    "fsync_p99_ms": 7.569408,
+    "fsync_p999_ms": 17.956864,
+    "randread_iops": 4274.624179,
+    "aging_mbps": [
+      32.50380897521973,
+      31.357177734375,
+      31.05288600921631,
+      31.51156997680664,
+      31.098153114318848,
+      32,
+      31.48056983947754,
+      31.265265464782715
+    ],
+    "snapshot_create_ms": 288,
+    "snapshot_delete_ms": 2489,
+    "reclaim_s": 5,
+    "reclaim_write_mbps": 29.739776611328125,
+    "compress_ratio": null,
+    "compress_write_mbps": null,
+    "reflink_ms": 6,
+    "degraded_randwrite_iops": 3465.253475,
+    "degraded_randread_iops": 3943.801873,
+    "rebuild_s": 45,
+    "nearfull95_write_mbps": 86.36977005004883,
+    "nearfull99_write_mbps": 67.36842060089111,
+    "enospc_delete_ok": true,
+    "enospc_recover_ok": true,
+    "scrub_s": 85,
+    "scrub_found": 4194304,
+    "scrub_repaired": 0,
+    "data_intact": false
+  }
+}
