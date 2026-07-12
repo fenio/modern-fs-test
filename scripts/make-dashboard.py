@@ -184,8 +184,16 @@ h2 { font-size: 15px; font-weight: 650; margin: 40px 0 4px; }
 }
 .card h3 { font-size: 13px; font-weight: 600; }
 .card .unit { color: var(--muted); font-weight: 400; }
+.cardhead { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.sortbtn {
+  background: none; border: 1px solid var(--ring); border-radius: 6px;
+  color: var(--muted); font: 11px system-ui, -apple-system, "Segoe UI", sans-serif;
+  padding: 2px 8px; cursor: pointer; flex: none;
+}
+.sortbtn:hover { color: var(--ink-2); border-color: var(--axis); }
+.sortbtn[aria-pressed="true"] { color: var(--ink); border-color: var(--axis); }
 .wide { overflow-x: auto; }
-.card > svg { display: block; width: 100%; height: auto; }
+svg.chart { display: block; width: 100%; height: auto; }
 svg text { font: 11.5px system-ui, -apple-system, "Segoe UI", sans-serif; }
 svg.key { display: inline-block; width: 20px; height: 10px; flex: none; }
 .tt {
@@ -255,18 +263,43 @@ const niceMax = m => { if (m <= 0) return 1;
 
 // Horizontal bar card: one row per filesystem, value at the tip.
 function barCard(metric) {
-  const vals = ents.map(e => (latest.results[e.id] || {})[metric.key]);
-  if (!vals.some(v => v != null)) return null;
+  const rows = ents.map(e => ({e, v: (latest.results[e.id] || {})[metric.key]}));
+  if (!rows.some(r => r.v != null)) return null;
   const card = el("div", {class: "card"});
-  card.appendChild(el("h3", {},
+  const head = el("div", {class: "cardhead"});
+  head.appendChild(el("h3", {},
     `${metric.label} <span class="unit">${metric.unit} · ${metric.better} is better</span>`));
+  const btn = el("button", {class: "sortbtn", type: "button",
+    "aria-pressed": "false", title: "Toggle between best-first and grouped matrix order"}, "");
+  head.appendChild(btn);
+  card.appendChild(head);
+  const holder = el("div");
+  card.appendChild(holder);
+  const bestFirst = () => [...rows].sort((a, b) => {
+    if (a.v == null && b.v == null) return 0;
+    if (a.v == null) return 1;  // missing values last
+    if (b.v == null) return -1;
+    return metric.better === "lower" ? a.v - b.v : b.v - a.v;
+  });
+  let sorted = true;  // best-first by default
+  const render = () => {
+    btn.setAttribute("aria-pressed", String(sorted));
+    btn.textContent = sorted ? "\u21c5 matrix order" : "\u2713 best first";
+    holder.replaceChildren(drawBars(sorted ? bestFirst() : rows, metric));
+  };
+  btn.addEventListener("click", () => { sorted = !sorted; render(); });
+  render();
+  return card;
+}
+
+function drawBars(rows, metric) {
   const rowH = 24, labW = 118, W = 460, plotW = W - labW - 64;
-  const H = ents.length * rowH + 8;
-  const max = niceMax(Math.max(...vals.filter(v => v != null)));
-  const svg = svgel("svg", {viewBox: `0 0 ${W} ${H}`, role: "img",
+  const H = rows.length * rowH + 8;
+  const max = niceMax(Math.max(...rows.map(r => r.v).filter(v => v != null)));
+  const svg = svgel("svg", {class: "chart", viewBox: `0 0 ${W} ${H}`, role: "img",
     "aria-label": metric.label});
-  ents.forEach((e, i) => {
-    const y = 4 + i * rowH, v = vals[i];
+  rows.forEach(({e, v}, i) => {
+    const y = 4 + i * rowH;
     const name = svgel("text", {x: labW - 8, y: y + 15.5, "text-anchor": "end",
       fill: css("--ink-2")});
     name.textContent = e.id;
@@ -297,8 +330,7 @@ function barCard(metric) {
     hit.addEventListener("mouseleave", hideTT);
     svg.appendChild(hit);
   });
-  card.appendChild(svg);
-  return card;
+  return svg;
 }
 
 // Line chart with hover crosshair. series: [{name, color, points:[{x,y}]}]
@@ -310,7 +342,7 @@ function lineChart(series, xLabels, unit, height) {
   const nx = xLabels.length;
   const X = i => L + (nx === 1 ? pw / 2 : pw * i / (nx - 1));
   const Y = v => T + ph * (1 - v / maxY);
-  const svg = svgel("svg", {viewBox: `0 0 ${W} ${H}`});
+  const svg = svgel("svg", {class: "chart", viewBox: `0 0 ${W} ${H}`});
   for (let g = 0; g <= 4; g++) {  // hairline solid grid
     const y = T + ph * g / 4;
     svg.appendChild(svgel("line", {x1: L, x2: W - R, y1: y, y2: y,
@@ -386,7 +418,7 @@ app.appendChild(el("p", {class: "note"},
 legend(app);
 
 app.appendChild(el("h2", {}, "Latest run"));
-app.appendChild(el("p", {class: "note"}, "One card per metric; rows are directly labeled and every value also appears in the table below."));
+app.appendChild(el("p", {class: "note"}, "One card per metric, sorted best-first \u2014 the per-card button switches to grouped matrix order. Every value also appears in the table below."));
 const grid = el("div", {class: "grid"});
 DATA.metrics.forEach(m => { const c = barCard(m); if (c) grid.appendChild(c); });
 app.appendChild(grid);
