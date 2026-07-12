@@ -65,7 +65,7 @@ Default matrix (4 devices, 2-copy redundancy, plus baselines):
 
 ### CI (GitHub Actions, loop devices)
 
-Every push/hourly cron builds each filesystem across 4 loop devices backed by
+Every push/2-hourly cron builds each filesystem across 4 loop devices backed by
 sparse files, runs the suite, and publishes a results table in the job summary
 plus JSON artifacts.
 
@@ -84,7 +84,7 @@ different machines. Mitigations, from strongest signal to weakest:
    junk numbers from an unlucky VM never enter the results.
 3. Cross-filesystem deltas within one run — treat small differences (tens of
    percent) as noise; large ones (2×+) are usually real.
-4. Trends over repeated runs (hourly cron + every push) average the VM
+4. Trends over repeated runs (2-hourly cron + every push) average the VM
    lottery out — this is where cross-filesystem conclusions belong.
 
 ### Real hardware

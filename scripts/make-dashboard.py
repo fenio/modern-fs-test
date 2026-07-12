@@ -642,7 +642,7 @@ function rebuild() {
   content.appendChild(el("h2", {}, "Trends across runs"));
   if (DATA.runs.length < 2) {
     content.appendChild(el("p", {class: "note"},
-      "Recorded once — trend lines appear as more runs accumulate (hourly cron + every push)."));
+      "Recorded once — trend lines appear as more runs accumulate (2-hourly cron + every push)."));
   } else {
     content.appendChild(el("p", {class: "note"}, "One card per metric, one point per run."));
     const tgrid = el("div", {class: "grid"});

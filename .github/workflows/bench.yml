@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: '17 * * * *'  # hourly at :17 (GitHub may delay/skip under load)
+    - cron: '17 */2 * * *'  # every 2 hours at :17 (GitHub may delay/skip under load)
   workflow_dispatch:
     inputs:
       runs_on:
