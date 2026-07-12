@@ -28,16 +28,35 @@ fs_setup_compression() {
 }
 
 fs_compress_ratio() {
-  # Approximation: apparent size vs allocated blocks (st_blocks tracks
-  # compressed allocation on bcachefs)
-  local apparent actual
-  apparent=$(du -sb --apparent-size "$1" | cut -f1)
-  actual=$(du -sB1 "$1" | cut -f1)
-  if [ "${actual:-0}" -gt 0 ]; then
-    awk "BEGIN{printf \"%.2f\", $apparent/$actual}"
-  else
-    echo null
-  fi
+  # `bcachefs fs usage` has a Compression section with per-algorithm
+  # compressed/uncompressed totals (du can't see compression here —
+  # st_blocks reports logical allocation)
+  local dump="$RESULTS_DIR/raw/$BENCH_ID-fs-usage.txt"
+  bcachefs fs usage "$MNT" > "$dump" 2>&1 || true
+  awk '
+    function bytes(v, u) {
+      if (u == "") { if (match(v, /[KMGTP]?i?B$/)) { u = substr(v, RSTART); v = substr(v, 1, RSTART - 1) } }
+      v += 0
+      if (u == "KiB") return v * 1024
+      if (u == "MiB") return v * 1048576
+      if (u == "GiB") return v * 1073741824
+      if (u == "TiB") return v * 1099511627776
+      return v
+    }
+    insec && NF == 0 { insec = 0 }
+    insec && $1 != "type" {
+      i = 2
+      c = $i; i++
+      cu = ""; if ($i ~ /^[KMGTP]?i?B$/) { cu = $i; i++ }
+      un = $i; i++
+      uu = ""; if ($i ~ /^[KMGTP]?i?B$/) { uu = $i }
+      if ($1 != "incompressible" && $1 != "none") {
+        comp += bytes(c, cu); uncomp += bytes(un, uu)
+      }
+    }
+    /^Compression:/ { insec = 1 }
+    END { if (comp > 0) printf "%.2f", uncomp / comp; else print "null" }
+  ' "$dump"
 }
 
 fs_teardown() {
