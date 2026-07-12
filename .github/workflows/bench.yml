@@ -14,6 +14,12 @@ on:
         description: 'Real block devices, space-separated (e.g. "/dev/sdb /dev/sdc /dev/sdd /dev/sde"). THEY WILL BE WIPED. Empty = loop devices.'
         default: ''
 
+# A newer push supersedes older push runs (their code is stale anyway);
+# cron/dispatch runs keep unique groups and never cancel each other.
+concurrency:
+  group: fs-bench-${{ github.event_name == 'push' && 'push' || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+
 permissions:
   contents: read
 
