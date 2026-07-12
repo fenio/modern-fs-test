@@ -26,9 +26,9 @@ fs_snapshot() {
   bcachefs subvolume snapshot "$DATA" "$MNT/$1" >/dev/null
 }
 
-REPLICAS=2
-
 fs_setup_compression() {
+  REPLICAS=2
+  [ "${LAYOUT:-replicas2}" = single ] && REPLICAS=1
   mkdir -p "$1"
   # renamed from "setattr" in newer bcachefs-tools
   bcachefs set-file-option --compression=zstd "$1" 2>/dev/null \

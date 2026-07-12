@@ -47,6 +47,9 @@ jobs:
             layout: mirror-8k
           - fs: zfs
             layout: single
+            # one device = 16G usable; 128K-recordsize snapshot retention
+            # needs more or the pool exhausts mid-aging
+            dev_size: 32G
           - fs: bcachefs
             layout: replicas2
           - fs: bcachefs
@@ -54,6 +57,7 @@ jobs:
     env:
       BENCH_DEVICES: ${{ inputs.devices }}
       BENCH_WIPE: ${{ inputs.devices != '' && '1' || '0' }}
+      DEV_SIZE: ${{ matrix.dev_size || '16G' }}
     steps:
       - uses: actions/checkout@v7
 
@@ -62,7 +66,7 @@ jobs:
 
       - name: Run benchmark
         run: |
-          sudo --preserve-env=BENCH_DEVICES,BENCH_WIPE \
+          sudo --preserve-env=BENCH_DEVICES,BENCH_WIPE,DEV_SIZE \
             RESULTS_DIR="$PWD/results" \
             scripts/run-bench.sh ${{ matrix.fs }} ${{ matrix.layout }}
 
