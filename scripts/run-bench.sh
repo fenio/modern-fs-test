@@ -216,15 +216,39 @@ else
   log "compression unsupported on $FS — skipping"
 fi
 
-# --- Phase 6: reflink copy -------------------------------------------------
+# --- Phase 6: reflink + clone divergence ------------------------------------
+# The unshare penalty: overwriting a block that a reflink clone or a
+# snapshot still shares forces the filesystem to break the sharing.
+# Same 4k-overwrite workload three ways — plain file (baseline), fresh
+# reflink clone, freshly-snapshotted file. XFS participates via reflink,
+# LVM via its snapshots: integrated vs classic on both axes.
 REFLINK_MS=null
+DIV_PLAIN_MBPS=null
+DIV_CLONE_MBPS=null
+DIV_SNAP_MBPS=null
+log "phase: reflink + clone divergence"
+fio --name=plainprep --filename="$DATA/plain.dat" --rw=write --bs=1M \
+  --size="$READ_SIZE" --end_fsync=1 --output=/dev/null
+out=$(fio_json div-plain --filename="$DATA/plain.dat" --rw=randwrite \
+  --bs=4k --size="$READ_SIZE" --io_size=128M --end_fsync=1)
+DIV_PLAIN_MBPS=$(jq '.jobs[0].write.bw_bytes / 1048576' "$out")
 if [ "${FS_REFLINK:-0}" = 1 ]; then
-  log "phase: reflink copy of $READ_SIZE file"
   t0=$(now_ms)
   if cp --reflink=always "$DATA/read.dat" "$DATA/reflink-copy"; then
     REFLINK_MS=$(( $(now_ms) - t0 ))
+    out=$(fio_json div-clone --filename="$DATA/reflink-copy" --rw=randwrite \
+      --bs=4k --size="$READ_SIZE" --io_size=128M --end_fsync=1)
+    DIV_CLONE_MBPS=$(jq '.jobs[0].write.bw_bytes / 1048576' "$out")
   fi
 fi
+if [ "$SNAPSHOTS_OK" = 1 ]; then
+  if fs_snapshot divsnap; then
+    out=$(fio_json div-snap --filename="$DATA/plain.dat" --rw=randwrite \
+      --bs=4k --size="$READ_SIZE" --io_size=128M --end_fsync=1)
+    DIV_SNAP_MBPS=$(jq '.jobs[0].write.bw_bytes / 1048576' "$out")
+  fi
+fi
+log "divergence: plain ${DIV_PLAIN_MBPS%.*}, clone ${DIV_CLONE_MBPS%.*}, after-snapshot ${DIV_SNAP_MBPS%.*} MB/s"
 
 # --- Phase 7: silent corruption + scrub + self-healing ---------------------
 # Overwrite 2G on one device *behind the filesystem's back*, scrub, then
@@ -411,6 +435,9 @@ jq -n \
   --argjson compress_ratio "$COMP_RATIO" \
   --argjson compress_write_mbps "$COMP_MBPS" \
   --argjson reflink_ms "$REFLINK_MS" \
+  --argjson divergence_plain_mbps "$DIV_PLAIN_MBPS" \
+  --argjson divergence_clone_mbps "$DIV_CLONE_MBPS" \
+  --argjson divergence_snap_mbps "$DIV_SNAP_MBPS" \
   --argjson degraded_randwrite_iops "$DEG_WRITE_IOPS" \
   --argjson degraded_randread_iops "$DEG_READ_IOPS" \
   --argjson rebuild_s "$REBUILD_S" \
@@ -450,6 +477,9 @@ jq -n \
               compress_ratio: $compress_ratio,
               compress_write_mbps: $compress_write_mbps,
               reflink_ms: $reflink_ms,
+              divergence_plain_mbps: $divergence_plain_mbps,
+              divergence_clone_mbps: $divergence_clone_mbps,
+              divergence_snap_mbps: $divergence_snap_mbps,
               degraded_randwrite_iops: $degraded_randwrite_iops,
               degraded_randread_iops: $degraded_randread_iops,
               rebuild_s: $rebuild_s,

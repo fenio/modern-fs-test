@@ -25,6 +25,7 @@ This suite benchmarks the *machinery*:
 | snapshot delete + reclaim | delete latency, foreground write bandwidth while background cleaning runs, time until the space actually returns |
 | compression | zstd ratio + write throughput on 75%-compressible data |
 | reflink | `cp --reflink=always` of a large file |
+| clone divergence | the unshare penalty: the same 4k-overwrite workload into a plain file, a fresh reflink clone (btrfs/bcachefs/xfs), and a freshly-snapshotted file (CoW filesystems and LVM) |
 | degraded + rebuild | fail one device: IO while degraded, then time the rebuild onto a spare |
 | snapshot-count scaling | 500 snapshots with no churn between them: create latency at the tail, snapshot-list time, remount time, bulk delete (native-snapshot filesystems) |
 | near-full / ENOSPC | on a fresh small array of the same layout: write throughput near 95% and 99% full, then fill to hard ENOSPC — can you still delete (CoW needs free space to delete), and does deleting make the fs writable again? Caveat: btrfs hits its chunk-allocation wall *before* df crosses the target on small devices (1G data chunks are a big fraction of a CI-sized array — on multi-TB disks the same wall sits at 99.9%), so its probes run at the wall; the actual fullness at each probe is recorded in the JSON (`nearfull*_pct`) |
@@ -175,8 +176,6 @@ Tuned variants sit next to the defaults in the same matrix (see
 
 CoW-specific phases (the behaviors nothing mainstream benchmarks):
 
-- [ ] **Clone divergence**: first-write-after-reflink/-snapshot cost — the
-      unshare penalty; XFS participates, making it integrated-vs-classic
 - [ ] **send/receive**: full + incremental stream throughput (btrfs, ZFS);
       rsync over the classic stack as the contrast; bcachefs: not available
 - [ ] **ext4 fscrypt** variant (directory-level encryption — the third model
