@@ -15,8 +15,14 @@ fs_setup() {
       vdevs+=("${DEVICES[i]}")
     fi
   done
+  # layout "…-8k" isolates the recordsize variable: default 128K records
+  # amplify 4k random overwrites 32x (read-modify-write + snapshot pinning)
+  local extra=()
+  case "${LAYOUT:-mirror}" in
+    *-8k) extra=(-O recordsize=8k) ;;
+  esac
   zpool create -f -O mountpoint="$MNT" -O compression=off -O atime=off \
-    "$POOL" "${vdevs[@]}"
+    "${extra[@]}" "$POOL" "${vdevs[@]}"
   zfs create "$POOL/data"
   DATA="$MNT/data"
 }

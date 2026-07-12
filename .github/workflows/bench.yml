@@ -35,6 +35,8 @@ jobs:
             layout: raid1
           - fs: zfs
             layout: mirror
+          - fs: zfs
+            layout: mirror-8k
           - fs: bcachefs
             layout: replicas2
             experimental: true

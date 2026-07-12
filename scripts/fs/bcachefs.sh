@@ -20,11 +20,15 @@ fs_snapshot() {
   bcachefs subvolume snapshot "$DATA" "$MNT/$1" >/dev/null
 }
 
+REPLICAS=2
+
 fs_setup_compression() {
   mkdir -p "$1"
   # renamed from "setattr" in newer bcachefs-tools
   bcachefs set-file-option --compression=zstd "$1" 2>/dev/null \
     || bcachefs setattr --compression=zstd "$1"
+  sync
+  COMP_USED_BEFORE=$(bcachefs fs usage "$MNT" | awk '/^Used:/ {print $2}')
 }
 
 fs_compress_ratio() {
@@ -33,7 +37,8 @@ fs_compress_ratio() {
   # st_blocks reports logical allocation)
   local dump="$RESULTS_DIR/raw/$BENCH_ID-fs-usage.txt"
   bcachefs fs usage "$MNT" > "$dump" 2>&1 || true
-  awk '
+  local ratio
+  ratio=$(awk '
     function bytes(v, u) {
       if (u == "") { if (match(v, /[KMGTP]?i?B$/)) { u = substr(v, RSTART); v = substr(v, 1, RSTART - 1) } }
       v += 0
@@ -56,7 +61,21 @@ fs_compress_ratio() {
     }
     /^Compression:/ { insec = 1 }
     END { if (comp > 0) printf "%.2f", uncomp / comp; else print "null" }
-  ' "$dump"
+  ' "$dump")
+  if [ "$ratio" != null ]; then
+    echo "$ratio"
+    return
+  fi
+  # Packaged tools (1.38) lack the Compression section — fall back to the
+  # raw Used: delta across the compressible write (replicated bytes).
+  local used_after logical
+  used_after=$(awk '/^Used:/ {print $2}' "$dump")
+  logical=$(numfmt --from=iec "$COMP_SIZE")
+  if [ -n "${COMP_USED_BEFORE:-}" ] && [ "$used_after" -gt "$COMP_USED_BEFORE" ]; then
+    awk "BEGIN{printf \"%.2f\", $logical * $REPLICAS / ($used_after - $COMP_USED_BEFORE)}"
+  else
+    echo null
+  fi
 }
 
 fs_teardown() {

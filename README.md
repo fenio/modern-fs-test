@@ -26,7 +26,9 @@ Default matrix (4 devices, 2-copy redundancy, plus baselines):
 - **ext4 on LVM raid10** — layered stack with block-layer CoW snapshots,
   so the snapshot-aging phase is comparable with the native-CoW filesystems
 - **btrfs** — `-d raid1 -m raid1`
-- **ZFS** — striped mirror pairs (raid10-like)
+- **ZFS** — striped mirror pairs (raid10-like), at the default 128K recordsize
+  and again at `recordsize=8k` — one-variable proof of how much of ZFS's
+  small-random-write cost is configuration, not design
 - **bcachefs** — `--replicas=2` (experimental; kernel module built via DKMS from
   [apt.bcachefs.org](https://apt.bcachefs.org/) since bcachefs left mainline in 6.17)
 
