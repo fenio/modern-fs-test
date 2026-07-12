@@ -1,0 +1,39 @@
+{
+  "fs": "btrfs",
+  "layout": "single",
+  "kernel": "7.0.0-1007-azure",
+  "version": "btrfs-progs v6.17.1",
+  "date": "2026-07-12T17:56:11Z",
+  "devices": "loop",
+  "ndev": 4,
+  "calibration": {
+    "seqwrite_mbps": 411.7410526275635,
+    "randwrite_iops": 14719.659144
+  },
+  "results": {
+    "seqwrite_mbps": 266.2506494522095,
+    "randwrite_iops": 3457.672310,
+    "randread_iops": 5181.693944,
+    "aging_mbps": [
+      81.34731483459473,
+      77.3413896560669,
+      75.94185638427734,
+      77.20144748687744,
+      75.76205921173096,
+      77.48184013366699,
+      71.668532371521,
+      70.97310733795166
+    ],
+    "snapshot_create_ms": 5,
+    "compress_ratio": 3.57,
+    "compress_write_mbps": 435.18911933898926,
+    "reflink_ms": 4,
+    "degraded_randwrite_iops": null,
+    "degraded_randread_iops": null,
+    "rebuild_s": null,
+    "scrub_s": null,
+    "scrub_found": null,
+    "scrub_repaired": null,
+    "data_intact": null
+  }
+}
