@@ -8,13 +8,17 @@ POOL=fsbench
 fs_setup() {
   modprobe zfs
   local vdevs=() i
-  for ((i = 0; i < ${#DEVICES[@]}; i += 2)); do
-    if [ -n "${DEVICES[i+1]:-}" ]; then
-      vdevs+=(mirror "${DEVICES[i]}" "${DEVICES[i+1]}")
-    else
-      vdevs+=("${DEVICES[i]}")
-    fi
-  done
+  if [ "${LAYOUT:-mirror}" = single ]; then
+    vdevs=("${DEVICES[0]}")
+  else
+    for ((i = 0; i < ${#DEVICES[@]}; i += 2)); do
+      if [ -n "${DEVICES[i+1]:-}" ]; then
+        vdevs+=(mirror "${DEVICES[i]}" "${DEVICES[i+1]}")
+      else
+        vdevs+=("${DEVICES[i]}")
+      fi
+    done
+  fi
   # layout "…-8k" isolates the recordsize variable: default 128K records
   # amplify 4k random overwrites 32x (read-modify-write + snapshot pinning)
   local extra=()
@@ -48,7 +52,7 @@ fs_scrub() {
   zpool scrub "$POOL"
   zpool wait -t scrub "$POOL"
   local status found
-  status=$(zpool status "$POOL")
+  status=$(zpool status -p "$POOL")  # -p: exact counts, not "4.09K"
   echo "$status" >&2
   # sum the CKSUM column over member devices
   found=$(awk '$1 ~ /^loop|^\/dev|^sd|^nvme/ && NF >= 5 {s += $5} END {print s+0}' <<<"$status")
@@ -65,6 +69,7 @@ fs_version() {
 }
 
 fs_degrade() {
+  [ "${LAYOUT:-mirror}" != single ] || return 1
   zpool offline "$POOL" "${DEVICES[1]}"
 }
 

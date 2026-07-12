@@ -4,19 +4,20 @@
 
 VG=fsbench
 
-# Assemble the block device for the current LAYOUT and print its path.
-# Tool chatter goes to stderr so callers can command-substitute.
+# Assemble the block device for the current LAYOUT and set LAYERED_DEV.
+# Must run in the caller's shell, NOT in a $(…) subshell: the lvm layout
+# exports LVM_SYSTEM_DIR, which every later LVM command needs.
 layered_make_dev() {
   case "${LAYOUT:-single}" in
     single)
-      echo "${DEVICES[0]}"
+      LAYERED_DEV=${DEVICES[0]}
       ;;
     md-*)
       # --assume-clean: skip the initial resync, which would otherwise
       # compete with the benchmark for IO
       mdadm --create /dev/md/fsbench --run --level=10 \
-        --raid-devices="${#DEVICES[@]}" --assume-clean "${DEVICES[@]}" >&2
-      echo /dev/md/fsbench
+        --raid-devices="${#DEVICES[@]}" --assume-clean "${DEVICES[@]}"
+      LAYERED_DEV=/dev/md/fsbench
       ;;
     lvm-*)
       # Each PV is wrapped in a dm-linear target so the degraded phase can
@@ -40,16 +41,16 @@ EOF
       LVM_PVS=()
       for i in "${!DEVICES[@]}"; do
         sz=$(blockdev --getsz "${DEVICES[i]}")
-        dmsetup create "fsbench-pv$i" --table "0 $sz linear ${DEVICES[i]} 0" >&2
+        dmsetup create "fsbench-pv$i" --table "0 $sz linear ${DEVICES[i]} 0"
         LVM_PVS+=("/dev/mapper/fsbench-pv$i")
       done
-      pvcreate -y "${LVM_PVS[@]}" >&2
-      vgcreate "$VG" "${LVM_PVS[@]}" >&2
+      pvcreate -y "${LVM_PVS[@]}"
+      vgcreate "$VG" "${LVM_PVS[@]}"
       # 50%FREE leaves VG space for the CoW snapshots taken while aging;
       # --nosync skips the initial mirror sync (same reason as md above)
       lvcreate --type raid10 -i $(( ${#DEVICES[@]} / 2 )) -m 1 --nosync \
-        -l 50%FREE -n bench -y "$VG" >&2
-      echo "/dev/$VG/bench"
+        -l 50%FREE -n bench -y "$VG"
+      LAYERED_DEV="/dev/$VG/bench"
       ;;
     *)
       die "unknown layout: $LAYOUT"

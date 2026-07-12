@@ -8,10 +8,9 @@ source "$SCRIPT_DIR/lib/layered.sh"
 FS_REFLINK=1
 
 fs_setup() {
-  local dev
-  dev=$(layered_make_dev)
-  mkfs.xfs -fq "$dev"
-  mount -o noatime "$dev" "$MNT"
+  layered_make_dev
+  mkfs.xfs -fq "$LAYERED_DEV"
+  mount -o noatime "$LAYERED_DEV" "$MNT"
   mkdir -p "$MNT/data"
   DATA="$MNT/data"
 }

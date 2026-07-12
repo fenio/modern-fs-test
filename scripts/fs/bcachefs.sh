@@ -9,10 +9,15 @@ fs_setup() {
   modprobe bcachefs 2>/dev/null || true
   grep -qw bcachefs /proc/filesystems \
     || die "kernel has no bcachefs support (needs DKMS or a custom kernel)"
-  bcachefs format -f --replicas=2 "${DEVICES[@]}"
-  local devlist
-  devlist=$(IFS=:; echo "${DEVICES[*]}")
-  mount -t bcachefs "$devlist" "$MNT"
+  if [ "${LAYOUT:-replicas2}" = single ]; then
+    bcachefs format -f "${DEVICES[0]}"
+    mount -t bcachefs "${DEVICES[0]}" "$MNT"
+  else
+    bcachefs format -f --replicas=2 "${DEVICES[@]}"
+    local devlist
+    devlist=$(IFS=:; echo "${DEVICES[*]}")
+    mount -t bcachefs "$devlist" "$MNT"
+  fi
   bcachefs subvolume create "$MNT/data"
   DATA="$MNT/data"
 }
@@ -87,6 +92,7 @@ fs_compress_ratio() {
 # lost device held: add the spare, then evacuate the device — which
 # blocks until it holds zero data.
 fs_degrade() {
+  [ "${LAYOUT:-replicas2}" != single ] || return 1
   bcachefs device offline --force "${DEVICES[1]}" 2>/dev/null \
     || bcachefs device offline "${DEVICES[1]}"
 }
@@ -102,9 +108,12 @@ fs_teardown() {
 }
 
 fs_scrub() {
+  # scrub may exit non-zero after *finding* errors — that's still a
+  # completed scrub; only treat CLI-level failure as unsupported
   local out fixed
-  out=$(bcachefs scrub "$MNT" 2>&1) || return 1
+  out=$(bcachefs scrub "$MNT" 2>&1) || true
   echo "$out" >&2
+  grep -qiE 'usage:|unknown command|invalid option|no such' <<<"$out" && return 1
   # output format varies across tool versions — best-effort count parse;
   # the md5 verdict in run-bench is the authoritative result
   fixed=$(grep -oiE '[0-9]+[[:space:]]+(errors?[[:space:]]+)?(corrected|fixed)' <<<"$out" \

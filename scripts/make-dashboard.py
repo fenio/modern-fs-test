@@ -16,9 +16,10 @@ import sys
 
 # Composite encoding: hue follows the filesystem FAMILY (a fixed categorical
 # slot per family, never cycled), and the variant within a family is carried
-# by line style (solid / dashed / dotted) plus labels and tooltips. Append
-# new families/variants at the end; existing ones never move.
-FAMILY_ORDER = ["ext4", "xfs", "btrfs", "bcachefs", "zfs"]
+# by line style (solid / dashed / dotted) plus labels and tooltips. Slots are
+# pinned explicitly — color follows the family forever (bcachefs=yellow was
+# chosen over green, which read too close to xfs's aqua).
+FAMILY_SLOT = {"ext4": 0, "xfs": 1, "bcachefs": 2, "btrfs": 3, "zfs": 4}
 ENTITY_ORDER = [
     "ext4/single",
     "ext4/md-raid10",
@@ -27,9 +28,12 @@ ENTITY_ORDER = [
     "xfs/md-raid10",
     "xfs/lvm-raid10",
     "btrfs/raid1",
+    "btrfs/single",
     "bcachefs/replicas2",
+    "bcachefs/single",
     "zfs/mirror",
     "zfs/mirror-8k",
+    "zfs/single",
 ]
 
 METRICS = [
@@ -85,22 +89,18 @@ def entity_list(runs):
     seen = {e for r in runs for e in r["results"]}
     ordered = [e for e in ENTITY_ORDER if e in seen]
     ordered += sorted(seen - set(ENTITY_ORDER))
-    fams = []
-    for e in ordered:
-        fam = e.split("/")[0]
-        if fam not in fams:
-            fams.append(fam)
-    fams.sort(key=lambda f: (FAMILY_ORDER.index(f) if f in FAMILY_ORDER
-                             else len(FAMILY_ORDER)))
-    if len(fams) > 8:
-        print("WARNING: more than 8 families; hues reused", file=sys.stderr)
+    slots = dict(FAMILY_SLOT)
     variants = {}
     out = []
     for e in ordered:
         fam = e.split("/")[0]
+        if fam not in slots:
+            slots[fam] = max(slots.values()) + 1  # unknown family: next slot
         vi = variants.get(fam, 0)
         variants[fam] = vi + 1
-        out.append({"id": e, "fi": fams.index(fam), "vi": vi})
+        out.append({"id": e, "fi": slots[fam], "vi": vi})
+    if max(v["fi"] for v in out) > 7:
+        print("WARNING: more than 8 families; hues reused", file=sys.stderr)
     return out
 
 

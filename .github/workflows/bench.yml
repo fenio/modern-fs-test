@@ -39,12 +39,18 @@ jobs:
             layout: lvm-raid10
           - fs: btrfs
             layout: raid1
+          - fs: btrfs
+            layout: single
           - fs: zfs
             layout: mirror
           - fs: zfs
             layout: mirror-8k
+          - fs: zfs
+            layout: single
           - fs: bcachefs
             layout: replicas2
+          - fs: bcachefs
+            layout: single
     env:
       BENCH_DEVICES: ${{ inputs.devices }}
       BENCH_WIPE: ${{ inputs.devices != '' && '1' || '0' }}

@@ -39,6 +39,9 @@ Default matrix (4 devices, 2-copy redundancy, plus baselines):
   so the snapshot-aging phase is comparable with the native-CoW filesystems
 - **xfs single / on md raid10 / on LVM raid10** — the same three stacks again;
   XFS additionally has reflink, unlike ext4
+- **btrfs / bcachefs / ZFS single-device** — the CoW filesystems without
+  redundancy, head-to-head with ext4/xfs single: the pure cost (and features)
+  of CoW itself
 - **btrfs** — `-d raid1 -m raid1`
 - **ZFS** — striped mirror pairs (raid10-like), at the default 128K recordsize
   and again at `recordsize=8k` — one-variable proof of how much of ZFS's
