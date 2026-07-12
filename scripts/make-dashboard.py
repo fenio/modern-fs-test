@@ -61,8 +61,8 @@ METRICS = [
     ("nearfull95_write_mbps", "Write near full (95% target)", "MB/s", "higher"),
     ("nearfull99_write_mbps", "Write near full (99% target)", "MB/s", "higher"),
     ("snapscale_create_ms", "Snapshot create at 500 snaps", "ms", "lower"),
-    ("snapscale_remount_s", "Remount with 500 snaps", "s", "lower"),
-    ("snapscale_delete_s", "Delete 500 snapshots", "s", "lower"),
+    ("snapscale_remount_ms", "Remount with 500 snaps", "ms", "lower"),
+    ("snapscale_delete_ms", "Delete 500 snapshots", "ms", "lower"),
 ]
 
 

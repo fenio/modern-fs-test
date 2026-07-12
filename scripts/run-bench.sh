@@ -159,8 +159,8 @@ SNAPSCALE_N=null
 SNAPSCALE_CREATE_MS=null
 SNAPSCALE_TOTAL_S=null
 SNAPSCALE_LIST_MS=null
-SNAPSCALE_REMOUNT_S=null
-SNAPSCALE_DELETE_S=null
+SNAPSCALE_REMOUNT_MS=null
+SNAPSCALE_DELETE_MS=null
 case "$FS" in btrfs|zfs|bcachefs)
   SNAPSCALE_N=${SNAPSCALE_COUNT:-500}
   log "phase: snapshot-count scaling ($SNAPSCALE_N snapshots)"
@@ -186,13 +186,13 @@ case "$FS" in btrfs|zfs|bcachefs)
   fi
   t0=$(now_ms)
   if fs_remount; then
-    SNAPSCALE_REMOUNT_S=$(( ($(now_ms) - t0) / 1000 ))
+    SNAPSCALE_REMOUNT_MS=$(( $(now_ms) - t0 ))
   fi
   t0=$(now_ms)
   if [ "$SNAPSCALE_N" -gt 0 ] && fs_snapscale_delete "$SNAPSCALE_N"; then
-    SNAPSCALE_DELETE_S=$(( ($(now_ms) - t0) / 1000 ))
+    SNAPSCALE_DELETE_MS=$(( $(now_ms) - t0 ))
   fi
-  log "snapscale: $SNAPSCALE_N snaps in ${SNAPSCALE_TOTAL_S}s, create@tail ${SNAPSCALE_CREATE_MS}ms, list ${SNAPSCALE_LIST_MS}ms, remount ${SNAPSCALE_REMOUNT_S}s, delete ${SNAPSCALE_DELETE_S}s"
+  log "snapscale: $SNAPSCALE_N snaps in ${SNAPSCALE_TOTAL_S}s, create@tail ${SNAPSCALE_CREATE_MS}ms, list ${SNAPSCALE_LIST_MS}ms, remount ${SNAPSCALE_REMOUNT_MS}ms, delete ${SNAPSCALE_DELETE_MS}ms"
   ;;
 esac
 
@@ -415,8 +415,8 @@ jq -n \
   --argjson snapscale_create_ms "$SNAPSCALE_CREATE_MS" \
   --argjson snapscale_total_s "$SNAPSCALE_TOTAL_S" \
   --argjson snapscale_list_ms "$SNAPSCALE_LIST_MS" \
-  --argjson snapscale_remount_s "$SNAPSCALE_REMOUNT_S" \
-  --argjson snapscale_delete_s "$SNAPSCALE_DELETE_S" \
+  --argjson snapscale_remount_ms "$SNAPSCALE_REMOUNT_MS" \
+  --argjson snapscale_delete_ms "$SNAPSCALE_DELETE_MS" \
   --argjson nearfull95_write_mbps "$NEARFULL95_MBPS" \
   --argjson nearfull99_write_mbps "$NEARFULL99_MBPS" \
   --argjson nearfull95_pct "$NEARFULL95_PCT" \
@@ -454,8 +454,8 @@ jq -n \
               snapscale_create_ms: $snapscale_create_ms,
               snapscale_total_s: $snapscale_total_s,
               snapscale_list_ms: $snapscale_list_ms,
-              snapscale_remount_s: $snapscale_remount_s,
-              snapscale_delete_s: $snapscale_delete_s,
+              snapscale_remount_ms: $snapscale_remount_ms,
+              snapscale_delete_ms: $snapscale_delete_ms,
               nearfull95_write_mbps: $nearfull95_write_mbps,
               nearfull99_write_mbps: $nearfull99_write_mbps,
               nearfull95_pct: $nearfull95_pct,

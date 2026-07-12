@@ -20,16 +20,10 @@ fs_setup() {
   esac
   if [ "${LAYOUT:-replicas2}" = single ]; then
     "${fmt[@]}" "${DEVICES[0]}"
-    mount -t bcachefs "${DEVICES[0]}" "$MNT"
   else
     "${fmt[@]}" --replicas=2 "${DEVICES[@]}"
-    case "$LAYOUT" in
-      *-enc) bcachefs unlock --file "$DISK_DIR/bcachefs.pass" "${DEVICES[0]}" ;;
-    esac
-    local devlist
-    devlist=$(IFS=:; echo "${DEVICES[*]}")
-    mount -t bcachefs "$devlist" "$MNT"
   fi
+  bcachefs_mount
   bcachefs subvolume create "$MNT/data"
   DATA="$MNT/data"
 }
@@ -38,11 +32,25 @@ fs_snapshot() {
   bcachefs subvolume snapshot "$DATA" "$MNT/$1" >/dev/null
 }
 
+# Mount respecting layout (single = one device) and encryption (the mount
+# helper reads the passphrase file and unlocks itself — a separate
+# `bcachefs unlock` puts the key where mount doesn't find it).
+bcachefs_mount() {
+  local devlist
+  if [ "${LAYOUT:-replicas2}" = single ]; then
+    devlist=${DEVICES[0]}
+  else
+    devlist=$(IFS=:; echo "${DEVICES[*]}")
+  fi
+  case "${LAYOUT:-replicas2}" in
+    *-enc) bcachefs mount --passphrase-file "$DISK_DIR/bcachefs.pass" "$devlist" "$MNT" ;;
+    *) mount -t bcachefs "$devlist" "$MNT" ;;
+  esac
+}
+
 fs_remount() {
   umount "$MNT"
-  local devlist
-  devlist=$(IFS=:; echo "${DEVICES[*]}")
-  mount -t bcachefs "$devlist" "$MNT"
+  bcachefs_mount
 }
 
 fs_snap_list() { ls "$MNT" >/dev/null; }
