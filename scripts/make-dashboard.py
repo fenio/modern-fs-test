@@ -14,12 +14,18 @@ import json
 import os
 import sys
 
-# Fixed entity -> categorical slot assignment. Color follows the entity:
-# new filesystems get appended here, existing ones never move.
+# Composite encoding: hue follows the filesystem FAMILY (a fixed categorical
+# slot per family, never cycled), and the variant within a family is carried
+# by line style (solid / dashed / dotted) plus labels and tooltips. Append
+# new families/variants at the end; existing ones never move.
+FAMILY_ORDER = ["ext4", "xfs", "btrfs", "bcachefs", "zfs"]
 ENTITY_ORDER = [
     "ext4/single",
     "ext4/md-raid10",
     "ext4/lvm-raid10",
+    "xfs/single",
+    "xfs/md-raid10",
+    "xfs/lvm-raid10",
     "btrfs/raid1",
     "bcachefs/replicas2",
     "zfs/mirror",
@@ -76,10 +82,24 @@ def load_runs(runs_dir):
 def entity_list(runs):
     seen = {e for r in runs for e in r["results"]}
     ordered = [e for e in ENTITY_ORDER if e in seen]
-    extras = sorted(seen - set(ENTITY_ORDER))
-    if len(ordered) + len(extras) > 8:
-        print("WARNING: more than 8 entities; slots reused", file=sys.stderr)
-    return ordered + extras
+    ordered += sorted(seen - set(ENTITY_ORDER))
+    fams = []
+    for e in ordered:
+        fam = e.split("/")[0]
+        if fam not in fams:
+            fams.append(fam)
+    fams.sort(key=lambda f: (FAMILY_ORDER.index(f) if f in FAMILY_ORDER
+                             else len(FAMILY_ORDER)))
+    if len(fams) > 8:
+        print("WARNING: more than 8 families; hues reused", file=sys.stderr)
+    variants = {}
+    out = []
+    for e in ordered:
+        fam = e.split("/")[0]
+        vi = variants.get(fam, 0)
+        variants[fam] = vi + 1
+        out.append({"id": e, "fi": fams.index(fam), "vi": vi})
+    return out
 
 
 def main():
@@ -156,8 +176,9 @@ h2 { font-size: 15px; font-weight: 650; margin: 40px 0 4px; }
 .card h3 { font-size: 13px; font-weight: 600; }
 .card .unit { color: var(--muted); font-weight: 400; }
 .wide { overflow-x: auto; }
-svg { display: block; width: 100%; height: auto; }
+.card > svg { display: block; width: 100%; height: auto; }
 svg text { font: 11.5px system-ui, -apple-system, "Segoe UI", sans-serif; }
+svg.key { display: inline-block; width: 20px; height: 10px; flex: none; }
 .tt {
   position: fixed; pointer-events: none; z-index: 10; display: none;
   background: var(--surface); border: 1px solid var(--ring); border-radius: 8px;
@@ -184,8 +205,14 @@ footer a { color: var(--ink-2); }
 <script>
 const DATA = __DATA__;
 const SLOTS = ["--s1","--s2","--s3","--s4","--s5","--s6","--s7","--s8"];
+const DASH = ["", "7 4", "2 4"];  // variant within a family: solid/dashed/dotted
 const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
-const color = i => css(SLOTS[i % SLOTS.length]);
+const color = e => css(SLOTS[e.fi % SLOTS.length]);
+const dash = e => DASH[e.vi % DASH.length];
+const key = e =>
+  `<svg class="key" viewBox="0 0 20 10"><line x1="1" y1="5" x2="19" y2="5"
+   stroke="${color(e)}" stroke-width="2.5" stroke-linecap="round"
+   ${dash(e) ? `stroke-dasharray="${dash(e)}"` : ""}/></svg>`;
 const latest = DATA.runs[DATA.runs.length - 1];
 const ents = DATA.entities;
 const fmt = v => v == null ? "—"
@@ -218,7 +245,7 @@ const niceMax = m => { if (m <= 0) return 1;
 
 // Horizontal bar card: one row per filesystem, value at the tip.
 function barCard(metric) {
-  const vals = ents.map(e => (latest.results[e] || {})[metric.key]);
+  const vals = ents.map(e => (latest.results[e.id] || {})[metric.key]);
   if (!vals.some(v => v != null)) return null;
   const card = el("div", {class: "card"});
   card.appendChild(el("h3", {},
@@ -232,7 +259,7 @@ function barCard(metric) {
     const y = 4 + i * rowH, v = vals[i];
     const name = svgel("text", {x: labW - 8, y: y + 15.5, "text-anchor": "end",
       fill: css("--ink-2")});
-    name.textContent = e;
+    name.textContent = e.id;
     svg.appendChild(name);
     // baseline tick
     svg.appendChild(svgel("rect", {x: labW, y: y + 2, width: 1, height: rowH - 6,
@@ -247,7 +274,7 @@ function barCard(metric) {
     // square at baseline, 4px rounded data-end
     const p = `M${labW},${y + 3} h${w - r} a${r},${r} 0 0 1 ${r},${r} v${bh - 2 * r}
       a${r},${r} 0 0 1 ${-r},${r} h${-(w - r)} z`;
-    const bar = svgel("path", {d: p, fill: color(i)});
+    const bar = svgel("path", {d: p, fill: color(e)});
     svg.appendChild(bar);
     const val = svgel("text", {x: labW + w + 6, y: y + 15.5, fill: css("--ink")});
     val.textContent = fmt(v);
@@ -255,7 +282,7 @@ function barCard(metric) {
     // full-row hover target
     const hit = svgel("rect", {x: 0, y: y, width: W, height: rowH, fill: "transparent"});
     hit.addEventListener("mousemove", ev => showTT(
-      `<div class="row"><i style="background:${color(i)}"></i>${e}
+      `<div class="row">${key(e)}${e.id}
        <span class="v">${fmt(v)} ${metric.unit}</span></div>`, ev.clientX, ev.clientY));
     hit.addEventListener("mouseleave", hideTT);
     svg.appendChild(hit);
@@ -296,8 +323,10 @@ function lineChart(series, xLabels, unit, height) {
     const pts = s.points.filter(p => p.y != null);
     if (!pts.length) return;
     const d = pts.map((p, j) => `${j ? "L" : "M"}${X(p.x)},${Y(p.y)}`).join("");
-    svg.appendChild(svgel("path", {d, fill: "none", stroke: s.color,
-      "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round"}));
+    const attrs = {d, fill: "none", stroke: s.color,
+      "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round"};
+    if (s.dash) attrs["stroke-dasharray"] = s.dash;
+    svg.appendChild(svgel("path", attrs));
     const end = pts[pts.length - 1];  // end marker with surface ring
     svg.appendChild(svgel("circle", {cx: X(end.x), cy: Y(end.y), r: 4,
       fill: s.color, stroke: css("--surface"), "stroke-width": 2}));
@@ -316,7 +345,7 @@ function lineChart(series, xLabels, unit, height) {
     const rows = series.map(s => {
       const p = s.points.find(q => q.x === i);
       return p && p.y != null
-        ? `<div class="row"><i style="background:${s.color}"></i>${s.name}
+        ? `<div class="row">${s.keyHtml || ""}${s.name}
            <span class="v">${fmt(p.y)}</span></div>` : "";
     }).join("");
     showTT(`<b>${xLabels[i]}</b>${unit ? ` <span class="unit">${unit}</span>` : ""}${rows}`,
@@ -330,7 +359,7 @@ function lineChart(series, xLabels, unit, height) {
 function legend(parent) {
   const lg = el("div", {class: "legend"});
   ents.forEach((e, i) =>
-    lg.appendChild(el("span", {}, `<i style="background:${color(i)}"></i>${e}`)));
+    lg.appendChild(el("span", {}, `${key(e)}${e.id}`)));
   parent.appendChild(lg);
 }
 
@@ -355,12 +384,12 @@ app.appendChild(el("h2", {}, "Snapshot aging"));
 app.appendChild(el("p", {class: "note"},
   "Random-overwrite bandwidth (MB/s) per iteration while snapshots accumulate — flat is good, falling is CoW fragmentation cost."));
 const agingCard = el("div", {class: "card"});
-const iters = Math.max(...ents.map(e => ((latest.results[e] || {}).aging_mbps || []).length));
+const iters = Math.max(...ents.map(e => ((latest.results[e.id] || {}).aging_mbps || []).length));
 if (iters > 0) {
   const xl = Array.from({length: iters}, (_, i) => `iter ${i + 1}`);
   agingCard.appendChild(lineChart(
-    ents.map((e, i) => ({name: e, color: color(i),
-      points: ((latest.results[e] || {}).aging_mbps || []).map((v, j) => ({x: j, y: v}))})),
+    ents.map(e => ({name: e.id, color: color(e), dash: dash(e), keyHtml: key(e),
+      points: ((latest.results[e.id] || {}).aging_mbps || []).map((v, j) => ({x: j, y: v}))})),
     xl, "MB/s"));
 }
 app.appendChild(agingCard);
@@ -376,8 +405,8 @@ if (DATA.runs.length >= 2) {
   const tgrid = el("div", {class: "grid"});
   const xl = DATA.runs.map(r => (r.date || "").slice(5, 10) || r.id);
   DATA.metrics.forEach(m => {
-    const series = ents.map((e, i) => ({name: e, color: color(i),
-      points: DATA.runs.map((r, j) => ({x: j, y: (r.results[e] || {})[m.key]}))}));
+    const series = ents.map(e => ({name: e.id, color: color(e), dash: dash(e), keyHtml: key(e),
+      points: DATA.runs.map((r, j) => ({x: j, y: (r.results[e.id] || {})[m.key]}))}));
     if (!series.some(s => s.points.some(p => p.y != null))) return;
     const card = el("div", {class: "card"});
     card.appendChild(el("h3", {}, `${m.label} <span class="unit">${m.unit}</span>`));
@@ -396,9 +425,9 @@ tbl.appendChild(el("tr", {},
   DATA.metrics.map(m => `<th>${m.label}<br><span class="unit">${m.unit}</span></th>`).join("") +
   "<th>calib seq<br><span class=\"unit\">MB/s</span></th><th>calib rand<br><span class=\"unit\">IOPS</span></th>"));
 ents.forEach((e, i) => {
-  const r = latest.results[e] || {}, c = r.calibration || {};
+  const r = latest.results[e.id] || {}, c = r.calibration || {};
   tbl.appendChild(el("tr", {},
-    `<td><i style="background:${color(i)}"></i>${e}</td>` +
+    `<td><span style="display:inline-flex;align-items:center;gap:7px">${key(e)}${e.id}</span></td>` +
     DATA.metrics.map(m => `<td>${fmt(r[m.key])}</td>`).join("") +
     `<td>${fmt(c.seqwrite_mbps)}</td><td>${fmt(c.randwrite_iops)}</td>`));
 });

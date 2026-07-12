@@ -31,6 +31,12 @@ jobs:
             layout: md-raid10
           - fs: ext4
             layout: lvm-raid10
+          - fs: xfs
+            layout: single
+          - fs: xfs
+            layout: md-raid10
+          - fs: xfs
+            layout: lvm-raid10
           - fs: btrfs
             layout: raid1
           - fs: zfs

@@ -11,6 +11,9 @@ case "$FS" in
   ext4)
     apt-get install -yqq fio jq mdadm lvm2
     ;;
+  xfs)
+    apt-get install -yqq fio jq xfsprogs mdadm lvm2
+    ;;
   btrfs)
     apt-get install -yqq fio jq btrfs-progs btrfs-compsize
     ;;

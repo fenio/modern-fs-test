@@ -1,16 +1,16 @@
 # shellcheck shell=bash
-# ext4 baselines on the classic stack — single | md-raid10 | lvm-raid10.
-# The single layout is the "what does any of this cost" anchor. Snapshots
-# come from LVM in the lvm layout; no compression, no reflink.
+# XFS baselines on the classic stack — single | md-raid10 | lvm-raid10.
+# Unlike ext4, XFS has reflink (on by default in mkfs.xfs), so it joins the
+# CoW filesystems in that column. Snapshots come from LVM in the lvm layout.
 
 source "$SCRIPT_DIR/lib/layered.sh"
 
-FS_REFLINK=0
+FS_REFLINK=1
 
 fs_setup() {
   local dev
   dev=$(layered_make_dev)
-  mkfs.ext4 -Fq "$dev"
+  mkfs.xfs -fq "$dev"
   mount -o noatime "$dev" "$MNT"
   mkdir -p "$MNT/data"
   DATA="$MNT/data"

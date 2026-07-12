@@ -31,6 +31,8 @@ Default matrix (4 devices, 2-copy redundancy, plus baselines):
 - **ext4 on md raid10** — the classic layered stack
 - **ext4 on LVM raid10** — layered stack with block-layer CoW snapshots,
   so the snapshot-aging phase is comparable with the native-CoW filesystems
+- **xfs single / on md raid10 / on LVM raid10** — the same three stacks again;
+  XFS additionally has reflink, unlike ext4
 - **btrfs** — `-d raid1 -m raid1`
 - **ZFS** — striped mirror pairs (raid10-like), at the default 128K recordsize
   and again at `recordsize=8k` — one-variable proof of how much of ZFS's
