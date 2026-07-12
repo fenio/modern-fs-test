@@ -1,0 +1,39 @@
+{
+  "fs": "ext4",
+  "layout": "md-raid10",
+  "kernel": "7.0.0-1007-azure",
+  "version": "mke2fs 1.47.2 (1-Jan-2025)",
+  "date": "2026-07-12T16:25:04Z",
+  "devices": "loop",
+  "ndev": 4,
+  "calibration": {
+    "seqwrite_mbps": 413.57027435302734,
+    "randwrite_iops": 14660.361020
+  },
+  "results": {
+    "seqwrite_mbps": 185.59130001068115,
+    "randwrite_iops": 3262.182521,
+    "randread_iops": 6228.025732,
+    "aging_mbps": [
+      42.852359771728516,
+      42.960227966308594,
+      42.989084243774414,
+      43.104899406433105,
+      42.73789596557617,
+      42.787899017333984,
+      42.93140983581543,
+      42.94581413269043
+    ],
+    "snapshot_create_ms": null,
+    "compress_ratio": null,
+    "compress_write_mbps": null,
+    "reflink_ms": null,
+    "degraded_randwrite_iops": 4951.136591,
+    "degraded_randread_iops": 6429.485684,
+    "rebuild_s": 86,
+    "scrub_s": 166,
+    "scrub_found": 4182016,
+    "scrub_repaired": 0,
+    "data_intact": false
+  }
+}
