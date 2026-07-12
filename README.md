@@ -144,5 +144,4 @@ Tuned variants sit next to the defaults in the same matrix (see
 - [ ] Kernel matrix: boot mainline kernels in qemu (runners support nested KVM)
       and track behavioral regressions per kernel release
 - [ ] send/receive and device add/remove/rebalance timing
-- [ ] LVM raid repair in the degraded phase
 - [ ] Normalize cross-job comparisons by the calibration anchor in the dashboard
