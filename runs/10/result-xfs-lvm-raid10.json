@@ -1,0 +1,34 @@
+{
+  "fs": "xfs",
+  "layout": "lvm-raid10",
+  "kernel": "7.0.0-1007-azure",
+  "date": "2026-07-12T14:11:17Z",
+  "devices": "loop",
+  "ndev": 4,
+  "calibration": {
+    "seqwrite_mbps": 195.38255977630615,
+    "randwrite_iops": 8073.580379
+  },
+  "results": {
+    "seqwrite_mbps": 95.91158103942871,
+    "randwrite_iops": 2821.741594,
+    "randread_iops": 3567.381087,
+    "aging_mbps": [
+      35.5703763961792,
+      28.542757987976074,
+      29.117379188537598,
+      31.29966926574707,
+      35.32008743286133,
+      23.075535774230957,
+      19.325129508972168,
+      31.828919410705566
+    ],
+    "snapshot_create_ms": 326,
+    "compress_ratio": null,
+    "compress_write_mbps": null,
+    "reflink_ms": 4,
+    "degraded_randwrite_iops": null,
+    "degraded_randread_iops": null,
+    "rebuild_s": null
+  }
+}
