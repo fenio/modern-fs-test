@@ -1,0 +1,35 @@
+{
+  "fs": "ext4",
+  "layout": "single",
+  "kernel": "7.0.0-1007-azure",
+  "version": "mke2fs 1.47.2 (1-Jan-2025)",
+  "date": "2026-07-12T15:59:02Z",
+  "devices": "loop",
+  "ndev": 4,
+  "calibration": {
+    "seqwrite_mbps": 397.2071371078491,
+    "randwrite_iops": 14781.358189
+  },
+  "results": {
+    "seqwrite_mbps": 357.8542718887329,
+    "randwrite_iops": 12985.136306,
+    "randread_iops": 7152.128262,
+    "aging_mbps": [
+      80.68074321746826,
+      79.92506980895996,
+      79.90012454986572,
+      80.32632541656494,
+      80.10012435913086,
+      80.4272689819336,
+      80.50314426422119,
+      80.55380725860596
+    ],
+    "snapshot_create_ms": null,
+    "compress_ratio": null,
+    "compress_write_mbps": null,
+    "reflink_ms": null,
+    "degraded_randwrite_iops": null,
+    "degraded_randread_iops": null,
+    "rebuild_s": null
+  }
+}
