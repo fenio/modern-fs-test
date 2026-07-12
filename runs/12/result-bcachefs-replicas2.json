@@ -1,0 +1,35 @@
+{
+  "fs": "bcachefs",
+  "layout": "replicas2",
+  "kernel": "7.0.0-1007-azure",
+  "version": "tools 1.38.8 / module 1.38.8",
+  "date": "2026-07-12T14:33:59Z",
+  "devices": "loop",
+  "ndev": 4,
+  "calibration": {
+    "seqwrite_mbps": 405.0632905960083,
+    "randwrite_iops": 15090.279627
+  },
+  "results": {
+    "seqwrite_mbps": 194.6583023071289,
+    "randwrite_iops": 8571.695220,
+    "randread_iops": 32436.818773,
+    "aging_mbps": [
+      67.15634822845459,
+      79.45375537872314,
+      92.68645858764648,
+      89.35427570343018,
+      81.16677188873291,
+      86.3406400680542,
+      72.45966529846191,
+      83.06294536590576
+    ],
+    "snapshot_create_ms": 32,
+    "compress_ratio": 3.74,
+    "compress_write_mbps": 197.49276733398438,
+    "reflink_ms": 234,
+    "degraded_randwrite_iops": 7721.085261,
+    "degraded_randread_iops": 35038.698710,
+    "rebuild_s": 5
+  }
+}
