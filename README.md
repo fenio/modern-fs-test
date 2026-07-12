@@ -15,7 +15,7 @@ This suite benchmarks the *machinery*:
 |---|---|
 | host calibration | fio on the runner's own disk *before* any filesystem exists — a VM-noise anchor |
 | seq / rand write, rand read | baseline throughput on the chosen redundancy layout |
-| snapshot aging | random-overwrite bandwidth as snapshots accumulate (CoW fragmentation cost) |
+| snapshot aging | random-overwrite bandwidth as snapshots accumulate (CoW fragmentation cost) — **100 snapshots** where the technology allows; ZFS at 128K recordsize pins ~the whole file per snapshot so its default-recordsize layouts run 10, and old-style LVM snapshots amplify every origin write per snapshot so lvm layouts run 8 (both caps are findings, not shortcuts) |
 | snapshot create | metadata cost of taking a snapshot |
 | snapshot delete + reclaim | delete latency, foreground write bandwidth while background cleaning runs, time until the space actually returns |
 | compression | zstd ratio + write throughput on 75%-compressible data |
@@ -67,8 +67,10 @@ different machines. Mitigations, from strongest signal to weakest:
 1. *Within-job* ratios and shapes (aging curve slope, compression on/off,
    degraded vs healthy) — same VM, same disk, directly meaningful.
 2. Every job runs a **host calibration** first (fio on the runner's disk,
-   before any filesystem exists); an outlier anchor flags an outlier VM, and
-   cross-job numbers can be normalized against it.
+   before any filesystem exists). Jobs on VMs below the calibration floor
+   (`CALIB_MIN_*`, ~25% of runners' normal disk speed margin) **fail fast
+   and are automatically rerun on a fresh runner** (up to 3 attempts) —
+   junk numbers from an unlucky VM never enter the results.
 3. Cross-filesystem deltas within one run — treat small differences (tens of
    percent) as noise; large ones (2×+) are usually real.
 4. Trends over repeated runs (weekly cron + every push) average the VM

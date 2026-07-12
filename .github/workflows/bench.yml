@@ -31,18 +31,26 @@ jobs:
             layout: md-raid10
           - fs: ext4
             layout: lvm-raid10
+            # dm-snapshot copies each origin write into every snapshot
+            # lacking it, and each snapshot pre-allocates VG space — 100
+            # old-style LVM snapshots is unusable by design
+            aging_iters: 8
           - fs: xfs
             layout: single
           - fs: xfs
             layout: md-raid10
           - fs: xfs
             layout: lvm-raid10
+            aging_iters: 8
           - fs: btrfs
             layout: raid1
           - fs: btrfs
             layout: single
           - fs: zfs
             layout: mirror
+            # 128K recordsize pins ~the whole aging file per snapshot —
+            # ~10 snapshots is what this pool size honestly affords
+            aging_iters: 10
           - fs: zfs
             layout: mirror-8k
           - fs: zfs
@@ -50,6 +58,7 @@ jobs:
             # one device = 16G usable; 128K-recordsize snapshot retention
             # needs more or the pool exhausts mid-aging
             dev_size: 32G
+            aging_iters: 10
           - fs: bcachefs
             layout: replicas2
           - fs: bcachefs
@@ -58,6 +67,11 @@ jobs:
       BENCH_DEVICES: ${{ inputs.devices }}
       BENCH_WIPE: ${{ inputs.devices != '' && '1' || '0' }}
       DEV_SIZE: ${{ matrix.dev_size || '16G' }}
+      AGING_ITERS: ${{ matrix.aging_iters || '100' }}
+      AGING_IO: 64M
+      # fail fast on slow shared VMs (normal runners: ~400 MB/s, ~14.5k IOPS)
+      CALIB_MIN_SEQ_MBPS: 300
+      CALIB_MIN_RAND_IOPS: 8000
     steps:
       - uses: actions/checkout@v7
 
@@ -66,7 +80,7 @@ jobs:
 
       - name: Run benchmark
         run: |
-          sudo --preserve-env=BENCH_DEVICES,BENCH_WIPE,DEV_SIZE \
+          sudo --preserve-env=BENCH_DEVICES,BENCH_WIPE,DEV_SIZE,AGING_ITERS,AGING_IO,CALIB_MIN_SEQ_MBPS,CALIB_MIN_RAND_IOPS \
             RESULTS_DIR="$PWD/results" \
             scripts/run-bench.sh ${{ matrix.fs }} ${{ matrix.layout }}
 

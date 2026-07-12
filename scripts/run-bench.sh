@@ -40,6 +40,19 @@ CALIB_RAND_IOPS=$(jq '.jobs[0].write.iops' "$out")
 rm -f "$DISK_DIR"/calib-*.0.0
 log "calibration: seq ${CALIB_SEQ_MBPS%.*} MB/s, rand ${CALIB_RAND_IOPS%.*} IOPS"
 
+# Calibration floor: on shared CI runners an unlucky VM (observed: ~190
+# vs ~400 MB/s host disk) produces junk numbers — fail fast so the job
+# can be rerun on a fresh runner instead of polluting the results.
+# Disabled by default and always skipped on real hardware.
+CALIB_MIN_SEQ_MBPS=${CALIB_MIN_SEQ_MBPS:-0}
+CALIB_MIN_RAND_IOPS=${CALIB_MIN_RAND_IOPS:-0}
+if [ -z "${BENCH_DEVICES:-}" ]; then
+  if [ "${CALIB_SEQ_MBPS%.*}" -lt "$CALIB_MIN_SEQ_MBPS" ] \
+     || [ "${CALIB_RAND_IOPS%.*}" -lt "$CALIB_MIN_RAND_IOPS" ]; then
+    die "runner below calibration floor (seq ${CALIB_SEQ_MBPS%.*}/${CALIB_MIN_SEQ_MBPS} MB/s, rand ${CALIB_RAND_IOPS%.*}/${CALIB_MIN_RAND_IOPS} IOPS) — rerun on a fresh runner"
+  fi
+fi
+
 fs_setup
 FS_VERSION=$(fs_version 2>/dev/null || true)
 log "$FS ($LAYOUT) mounted at $MNT, data dir $DATA${FS_VERSION:+ [$FS_VERSION]}"

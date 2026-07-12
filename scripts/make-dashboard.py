@@ -318,8 +318,9 @@ function lineChart(series, xLabels, unit, height) {
     t.textContent = fmt(maxY * (1 - g / 4));
     svg.appendChild(t);
   }
+  const tickStep = Math.max(1, Math.ceil(nx / 10));
   xLabels.forEach((lb, i) => {
-    if (nx > 12 && i % 2) return;
+    if (i % tickStep && i !== nx - 1) return;
     const t = svgel("text", {x: X(i), y: H - 8, "text-anchor": "middle",
       fill: css("--muted")});
     t.textContent = lb;
