@@ -83,6 +83,15 @@ fs_drop_caches
 out=$(fio_json randread --filename="$DATA/read.dat" --rw=randread --bs=4k \
   --size="$READ_SIZE" --runtime="$RUNTIME" --time_based)
 RANDREAD_IOPS=$(jq '.jobs[0].read.iops' "$out")
+# Parallel readers: a mirror can only serve reads from both copies when
+# there IS concurrency — a single dependent-read stream can't show it.
+# (On CI loop devices there's still just one physical disk underneath;
+# this measurement earns its keep on real hardware.)
+fs_drop_caches
+out=$(fio_json randread-par --filename="$DATA/read.dat" --rw=randread --bs=4k \
+  --size="$READ_SIZE" --runtime="$RUNTIME" --time_based --numjobs=4 \
+  --group_reporting)
+RANDREAD4_IOPS=$(jq '.jobs[0].read.iops' "$out")
 
 # --- Phase 4: CoW aging — overwrite under a growing pile of snapshots -----
 log "phase: aging, $AGING_ITERS iterations of snapshot + $AGING_IO overwrite"
@@ -390,6 +399,7 @@ jq -n \
   --argjson fsync_p99_ms "$FSYNC_P99_MS" \
   --argjson fsync_p999_ms "$FSYNC_P999_MS" \
   --argjson randread_iops "$RANDREAD_IOPS" \
+  --argjson randread4_iops "$RANDREAD4_IOPS" \
   --argjson aging_mbps "$AGING_JSON" \
   --argjson snapshot_create_ms "$SNAP_AVG" \
   --argjson snapshot_delete_ms "$SNAP_DELETE_MS" \
@@ -428,6 +438,7 @@ jq -n \
               fsync_p99_ms: $fsync_p99_ms,
               fsync_p999_ms: $fsync_p999_ms,
               randread_iops: $randread_iops,
+              randread4_iops: $randread4_iops,
               aging_mbps: $aging_mbps,
               snapshot_create_ms: $snapshot_create_ms,
               snapshot_delete_ms: $snapshot_delete_ms,

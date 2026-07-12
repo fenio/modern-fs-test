@@ -46,6 +46,7 @@ METRICS = [
     ("fsync_p99_ms", "fsync p99 latency", "ms", "lower"),
     ("fsync_p999_ms", "fsync p99.9 latency", "ms", "lower"),
     ("randread_iops", "Random read, 4k cold cache", "IOPS", "higher"),
+    ("randread4_iops", "Random read, 4 threads", "IOPS", "higher"),
     ("snapshot_create_ms", "Snapshot create", "ms", "lower"),
     ("snapshot_delete_ms", "Snapshot delete (all)", "ms", "lower"),
     ("reclaim_s", "Space reclaim after delete", "s", "lower"),
