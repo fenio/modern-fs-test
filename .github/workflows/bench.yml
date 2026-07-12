@@ -105,6 +105,7 @@ jobs:
       contents: write
       pages: write
       id-token: write
+      actions: write  # to drop stale github-pages artifacts on reruns
     concurrency:
       group: pages
       cancel-in-progress: false
@@ -145,6 +146,17 @@ jobs:
             --repo "https://github.com/${{ github.repository }}"
 
       - uses: actions/configure-pages@v6
+
+      - name: Drop stale pages artifacts from earlier attempts
+        # each rerun uploads another "github-pages" artifact and
+        # deploy-pages refuses when it finds more than one
+        run: |
+          for id in $(gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts?per_page=100" \
+                        --jq '.artifacts[] | select(.name == "github-pages") | .id'); do
+            gh api -X DELETE "repos/${{ github.repository }}/actions/artifacts/$id"
+          done
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       - uses: actions/upload-pages-artifact@v5
         with:
