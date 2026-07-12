@@ -1,0 +1,35 @@
+{
+  "fs": "xfs",
+  "layout": "md-raid10",
+  "kernel": "7.0.0-1007-azure",
+  "version": "mkfs.xfs version 6.18.0",
+  "date": "2026-07-12T14:28:29Z",
+  "devices": "loop",
+  "ndev": 4,
+  "calibration": {
+    "seqwrite_mbps": 412.072434425354,
+    "randwrite_iops": 14676.603673
+  },
+  "results": {
+    "seqwrite_mbps": 170.92305088043213,
+    "randwrite_iops": 3127.294533,
+    "randread_iops": 7102.963235,
+    "aging_mbps": [
+      43.2797966003418,
+      42.652448654174805,
+      42.70937538146973,
+      42.773600578308105,
+      42.93861103057861,
+      42.60985279083252,
+      42.65955638885498,
+      42.73789596557617
+    ],
+    "snapshot_create_ms": null,
+    "compress_ratio": null,
+    "compress_write_mbps": null,
+    "reflink_ms": 5,
+    "degraded_randwrite_iops": 5365.154495,
+    "degraded_randread_iops": 7139.428686,
+    "rebuild_s": 87
+  }
+}

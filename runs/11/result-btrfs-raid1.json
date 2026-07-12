@@ -1,0 +1,35 @@
+{
+  "fs": "btrfs",
+  "layout": "raid1",
+  "kernel": "7.0.0-1007-azure",
+  "version": "btrfs-progs v6.17.1",
+  "date": "2026-07-12T14:28:12Z",
+  "devices": "loop",
+  "ndev": 4,
+  "calibration": {
+    "seqwrite_mbps": 192.0840358734131,
+    "randwrite_iops": 9388.429752
+  },
+  "results": {
+    "seqwrite_mbps": 100.34788513183594,
+    "randwrite_iops": 1145.523632,
+    "randread_iops": 2637.351713,
+    "aging_mbps": [
+      65.79285526275635,
+      55.16052532196045,
+      57.130104064941406,
+      51.58170413970947,
+      53.035011291503906,
+      48.51241207122803,
+      48.81769561767578,
+      49.41131019592285
+    ],
+    "snapshot_create_ms": 7,
+    "compress_ratio": 3.57,
+    "compress_write_mbps": 279.0190734863281,
+    "reflink_ms": 3,
+    "degraded_randwrite_iops": 686.473912,
+    "degraded_randread_iops": 1986.974482,
+    "rebuild_s": 35
+  }
+}
