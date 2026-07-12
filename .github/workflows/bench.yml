@@ -1,0 +1,63 @@
+name: fs-bench
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 4 * * 1'  # weekly, Monday 04:17 UTC
+  workflow_dispatch:
+    inputs:
+      runs_on:
+        description: 'Runner label (use your self-hosted label for real hardware)'
+        default: 'ubuntu-24.04'
+      devices:
+        description: 'Real block devices, space-separated (e.g. "/dev/sdb /dev/sdc /dev/sdd /dev/sde"). THEY WILL BE WIPED. Empty = loop devices.'
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  bench:
+    runs-on: ${{ inputs.runs_on || 'ubuntu-24.04' }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - fs: ext4
+            layout: single
+          - fs: btrfs
+            layout: raid1
+          - fs: zfs
+            layout: mirror
+          - fs: bcachefs
+            layout: replicas2
+            experimental: true
+    continue-on-error: ${{ matrix.experimental == true }}
+    env:
+      BENCH_DEVICES: ${{ inputs.devices }}
+      BENCH_WIPE: ${{ inputs.devices != '' && '1' || '0' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo scripts/install-deps.sh ${{ matrix.fs }}
+
+      - name: Run benchmark
+        run: |
+          sudo --preserve-env=BENCH_DEVICES,BENCH_WIPE \
+            RESULTS_DIR="$PWD/results" \
+            scripts/run-bench.sh ${{ matrix.fs }} ${{ matrix.layout }}
+
+      - name: Write job summary
+        if: always()
+        run: scripts/summarize.sh results/result-*.json >> "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: results-${{ matrix.fs }}-${{ matrix.layout }}
+          path: results/
+          if-no-files-found: ignore
