@@ -103,7 +103,10 @@ DOCS = {
         "How many trivial 4k+fsync ops completed during the 30s flood, out of the ~145 the "
         "200ms cadence allows — a starvation ratio immune to histogram binning: 140+ means "
         "the prompt stayed responsive, single digits mean it was hostage to the streaming "
-        "writer. Phase 3.5.",
+        "writer. Counts the WHOLE cycle (write + fsync + think), so blocking inside the "
+        "write() call — e.g. ZFS txg backpressure — shows here even though the fsync "
+        "percentile above never sees it. The complete interactivity picture needs both. "
+        "Phase 3.5.",
         [("run-bench.sh (Phase 3.5)", "scripts/run-bench.sh")]),
     "smalltree_create_ms": (
         "Create a deterministic source tree: 20,000 files of 1-8k (seeded RNG) across 200 "
