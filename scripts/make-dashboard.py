@@ -371,7 +371,7 @@ body {
   font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
   padding: 24px 16px 64px;
 }
-main { max-width: 1080px; margin: 0 auto; }
+main { max-width: 1240px; margin: 0 auto; }
 h1 { font-size: 22px; font-weight: 650; }
 h2 { font-size: 15px; font-weight: 650; margin: 40px 0 4px; }
 .sub { color: var(--ink-2); margin-top: 4px; }
@@ -549,7 +549,7 @@ function barCard(metric, view) {
 }
 
 function drawBars(rows, metric) {
-  const rowH = 24, labW = 118, W = 460, plotW = W - labW - 64;
+  const rowH = 24, labW = 158, W = 600, plotW = W - labW - 70;
   const H = rows.length * rowH + 8;
   const present = rows.map(r => r.v).filter(v => v != null);
   const max = niceMax(Math.max(...present, 0));
