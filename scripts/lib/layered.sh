@@ -124,13 +124,23 @@ layered_rebuild() {
       local i p
       for i in $(seq 1 300); do
         p=$(lvs --noheadings -o sync_percent "$VG/bench" 2>/dev/null | tr -d ' ')
-        [ "${p%%.*}" = 100 ] && return 0
+        if [ "${p%%.*}" = 100 ]; then
+          layered_rebuild_lvm_cleanup
+          return 0
+        fi
         sleep 2
       done
       log "lvm raid sync did not finish within 10min"
       return 1
       ;;
   esac
+}
+
+# Drop the failed PV from the VG once repair is done — a VG carrying a
+# dead PV makes lvchange --syncaction check silently no-op (scrub_s was
+# 0 with zero mismatches for six runs after the phase reorder).
+layered_rebuild_lvm_cleanup() {
+  vgreduce --removemissing --force "$VG" >&2 || true
 }
 
 # "Scrub" for the classic stack: a raid check counts sectors that differ

@@ -120,10 +120,14 @@ def main():
             if res.get(k) is False:
                 hard.append(f"{ent}: {k} = false")
 
-        # unexpected nulls
+        # unexpected nulls (reclaim_s null = cleaner exceeded its 300s
+        # window — a legitimate outcome, warn instead of fail)
         for k, v in res.items():
             if v is None and not null_ok(ent, k):
-                hard.append(f"{ent}.{k}: unexpectedly null")
+                if k == "reclaim_s":
+                    warn.append(f"{ent}: reclaim did not finish within 300s")
+                else:
+                    hard.append(f"{ent}.{k}: unexpectedly null")
 
     # verdict flapping + lucky-intact info across history
     for ent, metrics in sorted(history.items()):

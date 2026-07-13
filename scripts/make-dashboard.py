@@ -142,7 +142,7 @@ DOCS = {
         "Seconds until free space actually returns to 85% of the pre-aging level after "
         "deleting all snapshots (df polled 1/s; VG free space for LVM, whose snapshots live "
         "outside the filesystem). The gap between this and the delete call is the background "
-        "cleaning window. Phase 5.",
+        "cleaning window; null means the space did not return within 300s. Phase 5.",
         [("run-bench.sh (Phase 5)", "scripts/run-bench.sh")]),
     "reclaim_write_mbps": (
         "Foreground write bandwidth (same workload as one aging iteration) measured while "
