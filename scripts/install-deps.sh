@@ -24,7 +24,7 @@ case "$FS" in
   bcachefs)
     # bcachefs left mainline in 6.17 — kernel module comes as DKMS from the
     # upstream apt repo (supports Ubuntu plucky+ / Debian trixie+).
-    apt-get install -yqq fio jq wget build-essential dkms "linux-headers-$(uname -r)"
+    apt-get install -yqq fio jq wget keyutils build-essential dkms "linux-headers-$(uname -r)"
     install -d -m 0755 /etc/apt/keyrings
     wget -qO /etc/apt/keyrings/apt.bcachefs.org.asc https://apt.bcachefs.org/apt.bcachefs.org.asc
     chmod 0644 /etc/apt/keyrings/apt.bcachefs.org.asc

@@ -43,7 +43,13 @@ bcachefs_mount() {
     devlist=$(IFS=:; echo "${DEVICES[*]}")
   fi
   case "${LAYOUT:-replicas2}" in
-    *-enc) bcachefs mount --passphrase-file "$DISK_DIR/bcachefs.pass" "$devlist" "$MNT" ;;
+    *-enc)
+      # the tools put the unlock key in the USER keyring, but the kernel's
+      # mount-time search goes through the SESSION keyring — under sudo
+      # they aren't linked ("Required key not available")
+      keyctl link @u @s 2>/dev/null || true
+      bcachefs mount --passphrase-file "$DISK_DIR/bcachefs.pass" "$devlist" "$MNT"
+      ;;
     *) mount -t bcachefs "$devlist" "$MNT" ;;
   esac
 }

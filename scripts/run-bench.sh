@@ -250,8 +250,38 @@ if [ "$SNAPSHOTS_OK" = 1 ]; then
 fi
 log "divergence: plain ${DIV_PLAIN_MBPS%.*}, clone ${DIV_CLONE_MBPS%.*}, after-snapshot ${DIV_SNAP_MBPS%.*} MB/s"
 
-# --- Phase 7: silent corruption + scrub + self-healing ---------------------
-# Overwrite 2G on one device *behind the filesystem's back*, scrub, then
+# --- Phase 7: degraded mode + rebuild --------------------------------------
+DEG_WRITE_IOPS=null
+DEG_READ_IOPS=null
+REBUILD_S=null
+if [ -n "$SPARE_DEV" ] && fs_degrade; then
+  log "phase: degraded IO (one device failed)"
+  out=$(fio_json degraded-randwrite --directory="$DATA" --rw=randwrite \
+    --bs=4k --size=1G --runtime="$RUNTIME" --time_based --fdatasync=16)
+  DEG_WRITE_IOPS=$(jq '.jobs[0].write.iops' "$out")
+  fs_drop_caches || true
+  out=$(fio_json degraded-randread --filename="$DATA/read.dat" --rw=randread \
+    --bs=4k --size="$READ_SIZE" --runtime="$RUNTIME" --time_based)
+  DEG_READ_IOPS=$(jq '.jobs[0].read.iops' "$out")
+  log "phase: rebuild onto spare device"
+  t0=$(now_ms)
+  if fs_rebuild; then
+    REBUILD_S=$(( ($(now_ms) - t0) / 1000 ))
+    log "rebuild finished in ${REBUILD_S}s"
+  else
+    log "rebuild failed"
+  fi
+else
+  log "degraded phase unsupported on $FS ($LAYOUT) — skipping"
+fi
+
+# --- Phase 8: silent corruption + scrub + self-healing ---------------------
+# Runs AFTER degraded+rebuild: the scrub then also validates the rebuilt
+# array, and — critically — md/lvm cannot repair what their check finds,
+# so nothing may run on the poisoned filesystem afterwards (the ENOSPC
+# phase builds a fresh array). XFS force-shuts-down on garbage metadata
+# reads, which is how the old order (corrupt, then keep benchmarking)
+# died. Overwrite 2G on one device behind the filesystem's back, then
 # verify the test file. Checksummed CoW filesystems repair from the good
 # copy; md/lvm can only count mismatches (no checksums to know which leg
 # is right) and may serve corrupted data — that's the point of the test.
@@ -282,31 +312,6 @@ if [ "$LAYOUT" != single ] && [ "${#DEVICES[@]}" -ge 3 ]; then
     DATA_INTACT=false
   fi
   log "scrub: ${SCRUB_S}s, found=$SCRUB_FOUND repaired=$SCRUB_REPAIRED data-intact=$DATA_INTACT"
-fi
-
-# --- Phase 8: degraded mode + rebuild --------------------------------------
-DEG_WRITE_IOPS=null
-DEG_READ_IOPS=null
-REBUILD_S=null
-if [ -n "$SPARE_DEV" ] && fs_degrade; then
-  log "phase: degraded IO (one device failed)"
-  out=$(fio_json degraded-randwrite --directory="$DATA" --rw=randwrite \
-    --bs=4k --size=1G --runtime="$RUNTIME" --time_based --fdatasync=16)
-  DEG_WRITE_IOPS=$(jq '.jobs[0].write.iops' "$out")
-  fs_drop_caches || true
-  out=$(fio_json degraded-randread --filename="$DATA/read.dat" --rw=randread \
-    --bs=4k --size="$READ_SIZE" --runtime="$RUNTIME" --time_based)
-  DEG_READ_IOPS=$(jq '.jobs[0].read.iops' "$out")
-  log "phase: rebuild onto spare device"
-  t0=$(now_ms)
-  if fs_rebuild; then
-    REBUILD_S=$(( ($(now_ms) - t0) / 1000 ))
-    log "rebuild finished in ${REBUILD_S}s"
-  else
-    log "rebuild failed"
-  fi
-else
-  log "degraded phase unsupported on $FS ($LAYOUT) — skipping"
 fi
 
 # --- Phase 9: near-full / ENOSPC -------------------------------------------
