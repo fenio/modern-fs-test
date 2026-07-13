@@ -18,6 +18,8 @@ This suite benchmarks the *machinery*:
 |---|---|
 | host calibration | fio on the runner's own disk *before* any filesystem exists — a VM-noise anchor |
 | seq / rand write, rand read | baseline throughput on the chosen redundancy layout |
+| trivial-op latency under load | "how long until my prompt comes back": a 4k write+fsync every 200ms (shell history, editor swap), p99 and worst case — idle, then while a 1M streaming writer floods the filesystem; CoW commit storms live here |
+| source-tree ops | create / cold `cp -r` / `rm -rf` of a 20k-small-file tree — the "copy a kernel tree" test |
 | parallel random read | same cold-cache read with 4 concurrent threads — a mirror can only serve from both copies under concurrency, so this is where replica read-scaling shows (on real hardware; CI loop devices share one disk and physically can't) |
 | fsync tail latency | p99 / p99.9 fdatasync completion latency from the random-write phase — CoW transaction commits (ZFS txg, btrfs commit interval) spike periodically in ways the IOPS average hides |
 | snapshot aging | random-overwrite bandwidth as snapshots accumulate (CoW fragmentation cost) — **100 snapshots** where the technology allows; ZFS at 128K recordsize pins ~the whole file per snapshot so its default-recordsize layouts run 10, and old-style LVM snapshots amplify every origin write per snapshot so lvm layouts run 8 (both caps are findings, not shortcuts) |

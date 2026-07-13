@@ -93,6 +93,58 @@ out=$(fio_json randread-par --filename="$DATA/read.dat" --rw=randread --bs=4k \
   --group_reporting)
 RANDREAD4_IOPS=$(jq '.jobs[0].read.iops' "$out")
 
+# --- Phase 3.4: sequential read (cold cache) --------------------------------
+fs_drop_caches
+out=$(fio_json seqread --filename="$DATA/read.dat" --rw=read --bs=1M \
+  --size="$READ_SIZE" --runtime="$RUNTIME" --time_based)
+SEQREAD_MBPS=$(jq '.jobs[0].read.bw_bytes / 1048576' "$out")
+
+# --- Phase 3.5: trivial-op latency, idle vs under streaming write -----------
+# "How long until my prompt comes back": a tiny 4k write+fsync every
+# 200ms (shell history, editor swap file), measured alone and then while
+# a 1M streaming writer floods the filesystem. CoW commit storms show up
+# here as multi-second worst cases that averages never reveal.
+log "phase: trivial-op latency, idle then under streaming write"
+out=$(fio_json lat-idle --directory="$DATA" --rw=write --bs=4k --size=4k \
+  --time_based --runtime=10 --fsync=1 --thinktime=200000)
+LAT_IDLE_P99=$(jq '(.jobs[0].sync.lat_ns.percentile."99.000000" // null) | if . then . / 1000000 else null end' "$out")
+out=$(fio_json lat-load --directory="$DATA" --rw=write --bs=1M --size="${LOAD_STREAM_SIZE:-8G}" \
+  --time_based --runtime=30 \
+  --name=tiny --directory="$DATA" --rw=write --bs=4k --size=4k \
+  --time_based --runtime=30 --fsync=1 --thinktime=200000)
+LAT_LOAD_P99=$(jq '([.jobs[] | select(.jobname == "tiny")][0].sync.lat_ns.percentile."99.000000" // null) | if . then . / 1000000 else null end' "$out")
+LAT_LOAD_MAX=$(jq '([.jobs[] | select(.jobname == "tiny")][0].sync.lat_ns.max // null) | if . then . / 1000000 else null end' "$out")
+rm -f "$DATA"/lat-idle* "$DATA"/lat-load* "$DATA"/tiny*
+log "trivial-op p99: idle ${LAT_IDLE_P99%.*}ms, under load ${LAT_LOAD_P99%.*}ms (worst ${LAT_LOAD_MAX%.*}ms)"
+
+# --- Phase 3.6: source-tree ops (20k small files) ----------------------------
+# The "cp -r a kernel tree" test: 20k files of 1-8k across 200 dirs.
+log "phase: source-tree ops (20k small files)"
+t0=$(now_ms)
+python3 - "$DATA/tree" <<'PY'
+import os, random, sys
+random.seed(42)
+base = sys.argv[1]
+for i in range(20000):
+    d = os.path.join(base, "d%d" % ((i % 200) // 20), "d%d" % (i % 200))
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, "f%d" % i), "wb") as f:
+        f.write(os.urandom(random.choice((1024, 2048, 4096, 8192))))
+PY
+sync
+SMALLTREE_CREATE_MS=$(( $(now_ms) - t0 ))
+fs_drop_caches || true
+t0=$(now_ms)
+cp -r "$DATA/tree" "$DATA/tree2"
+sync
+SMALLTREE_CP_MS=$(( $(now_ms) - t0 ))
+t0=$(now_ms)
+rm -rf "$DATA/tree2"
+sync
+SMALLTREE_RM_MS=$(( $(now_ms) - t0 ))
+rm -rf "$DATA/tree"
+log "source tree: create ${SMALLTREE_CREATE_MS}ms, cp -r ${SMALLTREE_CP_MS}ms, rm -rf ${SMALLTREE_RM_MS}ms"
+
 # --- Phase 4: CoW aging — overwrite under a growing pile of snapshots -----
 log "phase: aging, $AGING_ITERS iterations of snapshot + $AGING_IO overwrite"
 fio --name=agingprep --filename="$DATA/aging.dat" --rw=write --bs=1M \
@@ -432,6 +484,13 @@ jq -n \
   --argjson fsync_p999_ms "$FSYNC_P999_MS" \
   --argjson randread_iops "$RANDREAD_IOPS" \
   --argjson randread4_iops "$RANDREAD4_IOPS" \
+  --argjson seqread_mbps "$SEQREAD_MBPS" \
+  --argjson lat_idle_p99_ms "$LAT_IDLE_P99" \
+  --argjson lat_load_p99_ms "$LAT_LOAD_P99" \
+  --argjson lat_load_max_ms "$LAT_LOAD_MAX" \
+  --argjson smalltree_create_ms "$SMALLTREE_CREATE_MS" \
+  --argjson smalltree_cp_ms "$SMALLTREE_CP_MS" \
+  --argjson smalltree_rm_ms "$SMALLTREE_RM_MS" \
   --argjson aging_mbps "$AGING_JSON" \
   --argjson snapshot_create_ms "$SNAP_AVG" \
   --argjson snapshot_delete_ms "$SNAP_DELETE_MS" \
@@ -474,6 +533,13 @@ jq -n \
               fsync_p999_ms: $fsync_p999_ms,
               randread_iops: $randread_iops,
               randread4_iops: $randread4_iops,
+              seqread_mbps: $seqread_mbps,
+              lat_idle_p99_ms: $lat_idle_p99_ms,
+              lat_load_p99_ms: $lat_load_p99_ms,
+              lat_load_max_ms: $lat_load_max_ms,
+              smalltree_create_ms: $smalltree_create_ms,
+              smalltree_cp_ms: $smalltree_cp_ms,
+              smalltree_rm_ms: $smalltree_rm_ms,
               aging_mbps: $aging_mbps,
               snapshot_create_ms: $snapshot_create_ms,
               snapshot_delete_ms: $snapshot_delete_ms,
