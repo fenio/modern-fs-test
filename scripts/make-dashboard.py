@@ -40,6 +40,188 @@ ENTITY_ORDER = [
     "bcachefs/replicas2-enc",
 ]
 
+
+# Per-metric documentation shown in the dashboard's "Metric reference"
+# section. Each entry: what exactly runs, how the number is computed, and
+# the source files responsible. Kept next to METRICS so they evolve together.
+SRC = "https://github.com/fenio/modern-fs-benchmark/blob/main/"
+DOCS = {
+    "seqwrite_mbps": (
+        "fio writes a fresh file sequentially: bs=1M, size=SEQ_SIZE (2G in CI), one job, "
+        "fsync at the end (--end_fsync=1). Reported as write bandwidth. Phase 1.",
+        [("run-bench.sh (Phase 1)", "scripts/run-bench.sh")]),
+    "randwrite_iops": (
+        "fio random 4k writes over a 1G file for 30s, fdatasync every 16 IOs "
+        "(--rw=randwrite --bs=4k --fdatasync=16 --time_based). Reported as IOPS. Phase 2.",
+        [("run-bench.sh (Phase 2)", "scripts/run-bench.sh")]),
+    "fsync_p99_ms": (
+        "99th percentile of fdatasync completion latency, extracted from the Phase 2 run "
+        "(fio sync.lat_ns percentiles). CoW transaction commits (ZFS txg every ~5s, btrfs "
+        "commit interval) appear here as periodic spikes the IOPS average hides.",
+        [("run-bench.sh (Phase 2)", "scripts/run-bench.sh")]),
+    "fsync_p999_ms": (
+        "99.9th percentile of fdatasync completion latency from Phase 2 — the tail of the "
+        "tail. zfs mirror-8k famously posts great IOPS and p99 while this explodes to ~180ms.",
+        [("run-bench.sh (Phase 2)", "scripts/run-bench.sh")]),
+    "randread_iops": (
+        "fio random 4k reads over a 2G file for 30s, single thread, after a cold-cache "
+        "barrier (page cache dropped; ZFS pools are export/imported because drop_caches "
+        "does not touch the ARC). Phase 3.",
+        [("run-bench.sh (Phase 3)", "scripts/run-bench.sh"),
+         ("fs_drop_caches overrides", "scripts/fs/zfs.sh")]),
+    "randread4_iops": (
+        "Same cold-cache random read with --numjobs=4 --group_reporting. A mirror can only "
+        "serve reads from both copies under concurrency — a single dependent-read stream "
+        "cannot show replica read-scaling. On CI loop devices all replicas share one "
+        "physical disk, so the bandwidth win only appears on real hardware.",
+        [("run-bench.sh (Phase 3)", "scripts/run-bench.sh")]),
+    "seqread_mbps": (
+        "fio sequential 1M reads over the 2G file for 30s, cold cache. Phase 3.4.",
+        [("run-bench.sh (Phase 3.4)", "scripts/run-bench.sh")]),
+    "lat_idle_p99_ms": (
+        "A trivial operation — one 4k write + fsync every 200ms (like a shell appending "
+        "history or an editor updating its swap file) — run alone for 10s. p99 of the fsync "
+        "completion. The baseline for the under-load twin below. Phase 3.5.",
+        [("run-bench.sh (Phase 3.5)", "scripts/run-bench.sh")]),
+    "lat_load_p99_ms": (
+        "The same trivial 4k+fsync op, but measured for 30s while a second fio job floods "
+        "the filesystem with 1M streaming writes. 'How long until my prompt comes back': "
+        "CoW commit entanglement makes the tiny fsync wait for the big writer's transaction. "
+        "Phase 3.5.",
+        [("run-bench.sh (Phase 3.5)", "scripts/run-bench.sh")]),
+    "lat_load_max_ms": (
+        "Worst single trivial-op fsync observed during the 30s streaming-write flood — the "
+        "longest a 'prompt' hung. Phase 3.5.",
+        [("run-bench.sh (Phase 3.5)", "scripts/run-bench.sh")]),
+    "smalltree_create_ms": (
+        "Create a deterministic source tree: 20,000 files of 1-8k (seeded RNG) across 200 "
+        "directories, then sync. The same tree every run, so trends are comparable. Phase 3.6.",
+        [("run-bench.sh (Phase 3.6)", "scripts/run-bench.sh")]),
+    "smalltree_cp_ms": (
+        "cp -r of the 20k-file tree after a cold-cache barrier, plus sync — the 'copy a "
+        "kernel tree' test. Phase 3.6.",
+        [("run-bench.sh (Phase 3.6)", "scripts/run-bench.sh")]),
+    "smalltree_rm_ms": (
+        "rm -rf of the copied 20k-file tree, plus sync. Phase 3.6.",
+        [("run-bench.sh (Phase 3.6)", "scripts/run-bench.sh")]),
+    "aging_mbps": (
+        "The aging curve: a 2G file is overwritten with 64M of random 4k writes per "
+        "iteration, a snapshot taken before each; per-iteration bandwidth is the curve. 100 "
+        "iterations where the technology allows; 10 for default-recordsize ZFS (128K records "
+        "pin ~the whole file per snapshot), 8 for LVM (dm-snapshot copies origin writes into "
+        "every snapshot). Snapshot mechanics per backend: btrfs subvolume snapshots, zfs "
+        "snapshots, bcachefs subvolume snapshots, lvcreate -s. Phase 4.",
+        [("run-bench.sh (Phase 4)", "scripts/run-bench.sh"),
+         ("fs_snapshot per backend", "scripts/fs")]),
+    "snapshot_create_ms": (
+        "Median time of the per-iteration snapshot creates during aging (Phase 4).",
+        [("run-bench.sh (Phase 4)", "scripts/run-bench.sh"),
+         ("fs_snapshot per backend", "scripts/fs")]),
+    "snapshot_delete_ms": (
+        "Time for the delete call that removes ALL aging snapshots — btrfs subvolume delete "
+        "(returns in ms; the cleaner works afterwards), zfs destroy per snapshot, bcachefs "
+        "subvolume delete, lvremove. Phase 5.",
+        [("run-bench.sh (Phase 5)", "scripts/run-bench.sh"),
+         ("fs_snapshot_delete_all per backend", "scripts/fs")]),
+    "reclaim_s": (
+        "Seconds until free space actually returns to 85% of the pre-aging level after "
+        "deleting all snapshots (df polled 1/s; VG free space for LVM, whose snapshots live "
+        "outside the filesystem). The gap between this and the delete call is the background "
+        "cleaning window. Phase 5.",
+        [("run-bench.sh (Phase 5)", "scripts/run-bench.sh")]),
+    "reclaim_write_mbps": (
+        "Foreground write bandwidth (same workload as one aging iteration) measured while "
+        "background reclaim runs — how much the cleaner steals from you. Phase 5.",
+        [("run-bench.sh (Phase 5)", "scripts/run-bench.sh")]),
+    "snapscale_create_ms": (
+        "500 snapshots are created back-to-back with no data churn between them (isolating "
+        "metadata scaling from retention cost); this is the median create latency of the "
+        "last 20. Phase 5.5.",
+        [("run-bench.sh (Phase 5.5)", "scripts/run-bench.sh")]),
+    "snapscale_remount_ms": (
+        "Full unmount + mount (zpool export/import for ZFS) with 500 snapshots present. "
+        "Phase 5.5.",
+        [("run-bench.sh (Phase 5.5)", "scripts/run-bench.sh"),
+         ("fs_remount per backend", "scripts/fs")]),
+    "snapscale_delete_ms": (
+        "Bulk delete of all 500 snapshots: btrfs subvolume delete (one call), zfs ranged "
+        "destroy snap1%snap500 (one call), bcachefs one delete per snapshot. Phase 5.5.",
+        [("run-bench.sh (Phase 5.5)", "scripts/run-bench.sh"),
+         ("fs_snapscale_delete per backend", "scripts/fs")]),
+    "compress_ratio": (
+        "2G of 75%-compressible data (fio --buffer_compress_percentage=75 --refill_buffers "
+        "--fallocate=none; btrfs never compresses into preallocated extents) written into a "
+        "zstd-forced area. Ratio measured natively: compsize (btrfs), zfs get compressratio, "
+        "pool Used-delta / replicas (bcachefs). Phase 6.",
+        [("run-bench.sh (Phase 6)", "scripts/run-bench.sh"),
+         ("fs_setup_compression / fs_compress_ratio per backend", "scripts/fs")]),
+    "compress_write_mbps": (
+        "Write bandwidth of that same compressible stream — compression can make writes "
+        "FASTER (fewer bytes reach the disk) or cost CPU. Phase 6.",
+        [("run-bench.sh (Phase 6)", "scripts/run-bench.sh")]),
+    "reflink_ms": (
+        "cp --reflink=always of the 2G file — a metadata-only clone. btrfs clones the "
+        "extent tree in one operation (~ms); bcachefs reflinks per extent (~200ms); ext4 "
+        "cannot; ZFS block cloning is off by default. Phase 6 (divergence).",
+        [("run-bench.sh (Phase 6, divergence)", "scripts/run-bench.sh")]),
+    "divergence_plain_mbps": (
+        "Baseline for the unshare penalty: 128M of random 4k overwrites (end_fsync) into a "
+        "plain, unshared 2G file. Phase 6 (divergence).",
+        [("run-bench.sh (Phase 6, divergence)", "scripts/run-bench.sh")]),
+    "divergence_clone_mbps": (
+        "The same overwrite workload into a FRESH reflink clone — every write must break "
+        "extent sharing. Compare against the plain baseline; XFS participates, making this "
+        "integrated-vs-classic. Phase 6 (divergence).",
+        [("run-bench.sh (Phase 6, divergence)", "scripts/run-bench.sh")]),
+    "divergence_snap_mbps": (
+        "The same overwrite workload into the plain file right after snapshotting it — the "
+        "snapshot flavor of the unshare penalty. LVM participates via lvcreate -s. Phase 6 "
+        "(divergence).",
+        [("run-bench.sh (Phase 6, divergence)", "scripts/run-bench.sh")]),
+    "degraded_randwrite_iops": (
+        "One device is failed (zpool offline / mdadm --fail / loop-detach + degraded mount "
+        "for btrfs / bcachefs device offline / dm-error under one LVM PV), then the Phase 2 "
+        "random-write workload runs on the degraded array. Phase 7.",
+        [("run-bench.sh (Phase 7)", "scripts/run-bench.sh"),
+         ("fs_degrade per backend", "scripts/fs"),
+         ("layered_degrade (md/lvm)", "scripts/lib/layered.sh")]),
+    "degraded_randread_iops": (
+        "Cold-cache random 4k reads while the array is degraded. Phase 7.",
+        [("run-bench.sh (Phase 7)", "scripts/run-bench.sh")]),
+    "rebuild_s": (
+        "Wall time to restore full redundancy onto a spare device: zpool replace + resilver "
+        "wait, mdadm --add + --wait (full-member resync), btrfs replace -B, bcachefs device "
+        "add + evacuate (blocks until the lost device holds zero data), lvconvert --repair + "
+        "sync_percent polling. Phase 7.",
+        [("run-bench.sh (Phase 7)", "scripts/run-bench.sh"),
+         ("fs_rebuild per backend", "scripts/fs"),
+         ("layered_rebuild (md/lvm)", "scripts/lib/layered.sh")]),
+    "scrub_s": (
+        "2G of random garbage is written directly onto one member device (behind the "
+        "filesystem's back, offset 1G — python injector; uutils dd mis-seeks on dm devices), "
+        "caches dropped, then a full scrub: btrfs scrub -B, zpool scrub + wait, bcachefs "
+        "scrub, md/lvm sync-action 'check' (which can only COUNT mismatches — no checksums "
+        "to know which copy is right). Runs after the rebuild, so it validates that too. "
+        "The data-intact verdict in the table is the md5 of a 2G test file before vs after. "
+        "Phase 8.",
+        [("run-bench.sh (Phase 8)", "scripts/run-bench.sh"),
+         ("fs_scrub per backend", "scripts/fs"),
+         ("corrupt_device", "scripts/lib/common.sh")]),
+    "nearfull95_write_mbps": (
+        "On a FRESH small array of the same layout (4x2G — filling the main arrays would "
+        "exhaust the runner's own disk): fill with incompressible data to 95% by df, then "
+        "64M of random 4k overwrites into an existing file. btrfs hits its 1G-chunk "
+        "allocation wall before df crosses the target on devices this small, so its probe "
+        "runs at the wall — the ACTUAL fullness is recorded as nearfull95_pct in the JSON. "
+        "Phase 9.",
+        [("run-bench.sh (Phase 9)", "scripts/run-bench.sh")]),
+    "nearfull99_write_mbps": (
+        "Same probe after filling to 99% by df (see the 95% caveat). The table's "
+        "delete-at-100% and writable-after-delete verdicts come from the same phase: fill "
+        "to hard ENOSPC, rm a file, verify space returns and a new write succeeds. Phase 9.",
+        [("run-bench.sh (Phase 9)", "scripts/run-bench.sh")]),
+}
+
 METRICS = [
     ("seqwrite_mbps", "Sequential write", "MB/s", "higher"),
     ("randwrite_iops", "Random write, 4k + fsync", "IOPS", "higher"),
@@ -149,6 +331,8 @@ def main():
         ],
         "runs": runs,
         "repo": args.repo,
+        "docs": {k: {"text": t, "src": [{"label": l, "url": SRC + p} for l, p in s]}
+                 for k, (t, s) in DOCS.items()},
     }
     html = TEMPLATE.replace("__DATA__", json.dumps(data, separators=(",", ":")))
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
@@ -211,6 +395,19 @@ h2 { font-size: 15px; font-weight: 650; margin: 40px 0 4px; }
   padding: 2px 8px; cursor: pointer; flex: none;
 }
 .sortbtn:hover { color: var(--ink-2); border-color: var(--axis); }
+.dochint {
+  color: var(--muted); text-decoration: none; font-size: 11px; flex: none;
+  border: 1px solid var(--ring); border-radius: 50%;
+  width: 16px; height: 16px; line-height: 15px; text-align: center;
+  display: inline-block; margin-left: 6px;
+}
+.dochint:hover { color: var(--ink); border-color: var(--axis); }
+.docentry { margin: 14px 0; }
+.docentry h3 { font-size: 13px; font-weight: 600; }
+.docentry h3 a { color: var(--muted); text-decoration: none; font-weight: 400; }
+.docentry p { color: var(--ink-2); font-size: 13px; margin: 2px 0; }
+.docentry .src { font-size: 12px; }
+.docentry .src a { color: var(--ink-2); }
 .sortbtn[aria-pressed="true"] { color: var(--ink); border-color: var(--axis); }
 .filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 18px 0 2px; }
 .fbtn {
@@ -324,8 +521,10 @@ function barCard(metric, view) {
   if (!rows.some(r => r.v != null)) return null;
   const card = el("div", {class: "card"});
   const head = el("div", {class: "cardhead"});
+  const doc = DATA.docs[metric.key]
+    ? `<a class="dochint" href="#doc-${metric.key}" title="What exactly does this test run?">?</a>` : "";
   head.appendChild(el("h3", {},
-    `${metric.label} <span class="unit">${metric.unit} · ${metric.better} is better</span>`));
+    `${metric.label} <span class="unit">${metric.unit} · ${metric.better} is better</span>${doc}`));
   const btn = el("button", {class: "sortbtn", type: "button",
     "aria-pressed": "false", title: "Toggle between best-first and grouped matrix order"}, "");
   head.appendChild(btn);
@@ -636,7 +835,7 @@ function rebuild() {
   DATA.metrics.forEach(m => { const c = barCard(m, view); if (c) grid.appendChild(c); });
   content.appendChild(grid);
 
-  content.appendChild(el("h2", {}, "Snapshot aging"));
+  content.appendChild(el("h2", {}, `Snapshot aging <a class="dochint" href="#doc-aging_mbps" title="What exactly does this test run?">?</a>`));
   content.appendChild(el("p", {class: "note"},
     "Random-overwrite bandwidth (MB/s) per iteration while snapshots accumulate — flat is good, falling is CoW fragmentation cost. Snapshot counts differ by design: 100 where the technology allows, 10 for default-recordsize ZFS, 8 for LVM."));
   const agingCard = el("div", {class: "card"});
@@ -678,6 +877,26 @@ function rebuild() {
   content.appendChild(wrap);
 }
 rebuild();
+
+{
+  app.appendChild(el("h2", {}, "Metric reference"));
+  app.appendChild(el("p", {class: "note"},
+    "What exactly runs behind every number above, and where the code lives. The env-tunable sizes (SEQ_SIZE etc.) show their CI defaults."));
+  const box = el("div", {class: "card"});
+  const labelOf = {};
+  DATA.metrics.forEach(m => labelOf[m.key] = `${m.label} (${m.unit})`);
+  labelOf["aging_mbps"] = "Snapshot aging curve (MB/s)";
+  Object.keys(DATA.docs).forEach(k => {
+    const d = DATA.docs[k];
+    const entry = el("div", {class: "docentry", id: `doc-${k}`});
+    entry.appendChild(el("h3", {}, `${labelOf[k] || k} <a href="#doc-${k}">#</a>`));
+    entry.appendChild(el("p", {}, d.text));
+    entry.appendChild(el("p", {class: "src"},
+      "source: " + d.src.map(s => `<a href="${s.url}">${s.label}</a>`).join(" · ")));
+    box.appendChild(entry);
+  });
+  app.appendChild(box);
+}
 
 app.appendChild(el("footer", {},
   `Generated by <a href="${DATA.repo}">modern-fs-benchmark</a>. Methodology, caveats,
