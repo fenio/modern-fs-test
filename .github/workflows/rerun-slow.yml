@@ -2,7 +2,9 @@ name: rerun-slow-runners
 
 # Benchmark jobs fail fast when their VM is below the calibration floor
 # (see CALIB_MIN_* in bench.yml). Rerunning the failed jobs lands them on
-# fresh runners. Capped at 3 attempts total to avoid loops on real bugs.
+# fresh runners. Capped at 5 attempts total to avoid loops on real bugs — a slow-VM
+# rejection costs ~30s, and three consecutive lemons for one job is an
+# every-few-days event at the observed lemon rate.
 
 on:
   workflow_run:
@@ -16,7 +18,7 @@ jobs:
   rerun:
     if: >
       github.event.workflow_run.conclusion == 'failure' &&
-      github.event.workflow_run.run_attempt < 3
+      github.event.workflow_run.run_attempt < 5
     runs-on: ubuntu-latest
     steps:
       - name: Rerun failed jobs on fresh runners
