@@ -93,7 +93,17 @@ DOCS = {
         [("run-bench.sh (Phase 3.5)", "scripts/run-bench.sh")]),
     "lat_load_max_ms": (
         "Worst single trivial-op fsync observed during the 30s streaming-write flood — the "
-        "longest a 'prompt' hung. Phase 3.5.",
+        "longest a 'prompt' hung. Caveat: fio stores latencies in logarithmic histogram "
+        "bins (~1.5% wide), so extreme values quantize — different configs can report the "
+        "identical bin edge (e.g. 17,113ms). And when one op takes ~17s, the 30s window "
+        "holds only 1-2 samples, so p99 = max here. The ops-completed metric below is the "
+        "binning-immune companion. Phase 3.5.",
+        [("run-bench.sh (Phase 3.5)", "scripts/run-bench.sh")]),
+    "lat_load_ops": (
+        "How many trivial 4k+fsync ops completed during the 30s flood, out of the ~145 the "
+        "200ms cadence allows — a starvation ratio immune to histogram binning: 140+ means "
+        "the prompt stayed responsive, single digits mean it was hostage to the streaming "
+        "writer. Phase 3.5.",
         [("run-bench.sh (Phase 3.5)", "scripts/run-bench.sh")]),
     "smalltree_create_ms": (
         "Create a deterministic source tree: 20,000 files of 1-8k (seeded RNG) across 200 "
@@ -244,6 +254,7 @@ METRICS = [
     ("lat_idle_p99_ms", "Trivial-op p99, idle", "ms", "lower"),
     ("lat_load_p99_ms", "Trivial-op p99 under streaming write", "ms", "lower"),
     ("lat_load_max_ms", "Trivial-op worst case under load", "ms", "lower"),
+    ("lat_load_ops", "Trivial ops completed under load", "ops", "higher"),
     ("smalltree_create_ms", "Create 20k-file tree", "ms", "lower"),
     ("smalltree_cp_ms", "cp -r 20k-file tree, cold", "ms", "lower"),
     ("smalltree_rm_ms", "rm -rf 20k-file tree", "ms", "lower"),

@@ -116,6 +116,10 @@ out=$(fio_json lat-load --directory="$DATA" --rw=write --bs=1M --size="${LOAD_ST
   --time_based --runtime=30 --fsync=1 --thinktime=200000)
 LAT_LOAD_P99=$(jq '([.jobs[] | select(.jobname == "tiny")][0].sync.lat_ns.percentile."99.000000" // null) | if . then . / 1000000 else null end' "$out")
 LAT_LOAD_MAX=$(jq '([.jobs[] | select(.jobname == "tiny")][0].sync.lat_ns.max // null) | if . then . / 1000000 else null end' "$out")
+# ops completed vs the ~145 the 200ms cadence allows: a starvation ratio
+# immune to fio's log-histogram binning, meaningful even when individual
+# ops take seconds and the percentile has almost no samples
+LAT_LOAD_OPS=$(jq '[.jobs[] | select(.jobname == "tiny")][0].write.total_ios // null' "$out")
 rm -f "$DATA"/lat-idle* "$DATA"/lat-load* "$DATA"/tiny*
 log "trivial-op p99: idle ${LAT_IDLE_P99%.*}ms, under load ${LAT_LOAD_P99%.*}ms (worst ${LAT_LOAD_MAX%.*}ms)"
 
@@ -490,6 +494,7 @@ jq -n \
   --argjson lat_idle_p99_ms "$LAT_IDLE_P99" \
   --argjson lat_load_p99_ms "$LAT_LOAD_P99" \
   --argjson lat_load_max_ms "$LAT_LOAD_MAX" \
+  --argjson lat_load_ops "$LAT_LOAD_OPS" \
   --argjson smalltree_create_ms "$SMALLTREE_CREATE_MS" \
   --argjson smalltree_cp_ms "$SMALLTREE_CP_MS" \
   --argjson smalltree_rm_ms "$SMALLTREE_RM_MS" \
@@ -539,6 +544,7 @@ jq -n \
               lat_idle_p99_ms: $lat_idle_p99_ms,
               lat_load_p99_ms: $lat_load_p99_ms,
               lat_load_max_ms: $lat_load_max_ms,
+              lat_load_ops: $lat_load_ops,
               smalltree_create_ms: $smalltree_create_ms,
               smalltree_cp_ms: $smalltree_cp_ms,
               smalltree_rm_ms: $smalltree_rm_ms,
