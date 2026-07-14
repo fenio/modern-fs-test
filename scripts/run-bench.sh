@@ -250,7 +250,7 @@ if [[ "$FS" =~ ^(btrfs|zfs|bcachefs)$ || "$LAYOUT" == lvm-* ]]; then
       SNAPSCALE_N=$((i-1))
       break
     fi
-    if [ "$i" -gt $(( ${SNAPSCALE_COUNT:-500} - 20 )) ]; then
+    if [ "$i" -gt $(( SNAPSCALE_N - 20 )) ]; then
       TAIL_MS+=($(( $(now_ms) - ts )))
     fi
   done
