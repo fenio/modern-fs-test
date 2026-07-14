@@ -577,7 +577,8 @@ const logMap = (v, lo, hi) =>
 
 // Horizontal bar card: one row per filesystem, value at the tip.
 function barCard(metric, view) {
-  const rows = view.map(e => ({e, v: (latest.results[e.id] || {})[metric.key]}));
+  const rows = view.map(e => ({e, v: (latest.results[e.id] || {})[metric.key],
+                               r: latest.results[e.id] || {}}));
   if (!rows.some(r => r.v != null)) return null;
   const card = el("div", {class: "card"});
   const head = el("div", {class: "cardhead"});
@@ -635,7 +636,10 @@ function drawBars(rows, metric) {
       fill: css("--axis")}));
     if (v == null) {
       const na = svgel("text", {x: labW + 8, y: y + 15.5, fill: css("--muted")});
-      na.textContent = "—";
+      // p99 under load is withheld below 20 samples — say why, not "—"
+      na.textContent = (metric.key === "lat_load_p99_ms" && rows[i].r.lat_load_ops != null)
+        ? `starved — only ${rows[i].r.lat_load_ops} ops completed`
+        : "—";
       svg.appendChild(na);
       return;
     }
