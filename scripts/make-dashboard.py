@@ -729,7 +729,56 @@ function lineChart(series, xLabels, unit, height) {
   });
   hit.addEventListener("mouseleave", () => { hideTT(); cross.setAttribute("visibility", "hidden"); });
   svg.appendChild(hit);
+  svg.__geom = {W, L, pw, T, ph, nx};
   return svg;
+}
+
+// Wrap a line chart with drag-to-zoom (x-range brush) + double-click reset.
+// The y-axis rescales automatically because lineChart computes its domain
+// from the visible points only.
+function zoomable(seriesFull, labelsFull, unit, height) {
+  const holder = el("div");
+  let lo = 0, hi = labelsFull.length - 1;
+  const render = () => {
+    const labels = labelsFull.slice(lo, hi + 1);
+    const series = seriesFull.map(s => Object.assign({}, s, {
+      points: s.points.filter(p => p.x >= lo && p.x <= hi)
+                      .map(p => ({x: p.x - lo, y: p.y}))}));
+    const svg = lineChart(series, labels, unit, height);
+    const g = svg.__geom;
+    const band = svgel("rect", {y: g.T, height: g.ph, fill: css("--axis"),
+      opacity: 0.25, visibility: "hidden", "pointer-events": "none"});
+    svg.appendChild(band);
+    let dragX0 = null;
+    const toX = ev => {
+      const box = svg.getBoundingClientRect();
+      return (ev.clientX - box.left) / box.width * g.W;
+    };
+    svg.addEventListener("mousedown", ev => { dragX0 = toX(ev); ev.preventDefault(); });
+    svg.addEventListener("mousemove", ev => {
+      if (dragX0 == null) return;
+      const x = toX(ev);
+      band.setAttribute("x", Math.min(dragX0, x));
+      band.setAttribute("width", Math.abs(x - dragX0));
+      band.setAttribute("visibility", "visible");
+    });
+    svg.addEventListener("mouseup", ev => {
+      if (dragX0 == null) return;
+      const x1 = dragX0, x2 = toX(ev);
+      dragX0 = null;
+      band.setAttribute("visibility", "hidden");
+      const n = labels.length;
+      const idx = px => Math.max(0, Math.min(n - 1,
+        Math.round(n === 1 ? 0 : (px - g.L) / g.pw * (n - 1))));
+      const a = idx(Math.min(x1, x2)), b = idx(Math.max(x1, x2));
+      if (b - a >= 1) { const nl = lo + a; hi = lo + b; lo = nl; render(); }
+    });
+    svg.addEventListener("mouseleave", () => { dragX0 = null; band.setAttribute("visibility", "hidden"); });
+    svg.addEventListener("dblclick", () => { lo = 0; hi = labelsFull.length - 1; render(); });
+    holder.replaceChildren(svg);
+  };
+  render();
+  return holder;
 }
 
 // ---- table (sort state survives rebuilds) ------------------------------------
@@ -873,6 +922,7 @@ function syncControls() {
   app.appendChild(lg);
 }
 
+let trendDays = 0;  // 0 = all
 const content = el("div");
 app.appendChild(content);
 
@@ -899,7 +949,7 @@ function rebuild() {
   const iters = Math.max(...view.map(e => ((latest.results[e.id] || {}).aging_mbps || []).length), 0);
   if (iters > 0) {
     const xl = Array.from({length: iters}, (_, i) => `iter ${i + 1}`);
-    agingCard.appendChild(lineChart(
+    agingCard.appendChild(zoomable(
       view.map(e => ({name: e.id, color: color(e), dash: dash(e), keyHtml: key(e),
         points: ((latest.results[e.id] || {}).aging_mbps || []).map((v, j) => ({x: j, y: v}))})),
       xl, "MB/s"));
@@ -912,16 +962,29 @@ function rebuild() {
       "Recorded once — trend lines appear as more runs accumulate (2-hourly cron + every push)."));
   } else {
     content.appendChild(el("p", {class: "note"},
-      "One card per metric, one point per run — the newest 100 runs individually, older runs collapsed to daily medians (full history lives on the results-data branch)."));
+      "One card per metric, one point per run — the newest 100 runs individually, older runs collapsed to daily medians (full history on the results-data branch). Drag on a chart to zoom, double-click to reset; the y-axis rescales to what's visible."));
+    const rangeBar = el("div", {class: "filters", style: "margin-top:0"});
+    [["24h", 1], ["7 days", 7], ["30 days", 30], ["all", 0]].forEach(([label, days]) => {
+      const b = el("button", {class: "fbtn", type: "button",
+        "aria-pressed": String(trendDays === days)}, label);
+      b.addEventListener("click", () => { trendDays = days; rebuild(); });
+      rangeBar.appendChild(b);
+    });
+    content.appendChild(rangeBar);
+    let runsView = DATA.runs;
+    if (trendDays > 0) {
+      const newest = Date.parse(DATA.runs[DATA.runs.length - 1].date || 0);
+      runsView = DATA.runs.filter(r => Date.parse(r.date || 0) >= newest - trendDays * 864e5);
+    }
     const tgrid = el("div", {class: "grid"});
-    const xl = DATA.runs.map(r => (r.date || "").slice(5, 10) || r.id);
+    const xl = runsView.map(r => (r.date || "").slice(5, 16).replace("T", " ") || r.id);
     DATA.metrics.forEach(m => {
       const series = view.map(e => ({name: e.id, color: color(e), dash: dash(e), keyHtml: key(e),
-        points: DATA.runs.map((r, j) => ({x: j, y: (r.results[e.id] || {})[m.key]}))}));
+        points: runsView.map((r, j) => ({x: j, y: (r.results[e.id] || {})[m.key]}))}));
       if (!series.some(s => s.points.some(p => p.y != null))) return;
       const card = el("div", {class: "card"});
       card.appendChild(el("h3", {}, `${m.label} <span class="unit">${m.unit}</span>`));
-      card.appendChild(lineChart(series, xl, m.unit, 220));
+      card.appendChild(zoomable(series, xl, m.unit, 220));
       tgrid.appendChild(card);
     });
     content.appendChild(tgrid);
