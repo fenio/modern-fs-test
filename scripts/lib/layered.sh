@@ -60,7 +60,36 @@ EOF
 
 layered_snapshot() {
   case "${LAYOUT:-single}" in
-    lvm-*) lvcreate -s -L 2G -n "$1" -y "$VG/bench" >/dev/null ;;
+    lvm-*) lvcreate -s -L "${LVM_SNAP_SIZE:-2G}" -n "$1" -y "$VG/bench" >/dev/null ;;
+    *) return 1 ;;
+  esac
+}
+
+layered_remount() {
+  case "${LAYOUT:-single}" in
+    lvm-*)
+      umount "$MNT"
+      mount -o noatime "/dev/$VG/bench" "$MNT"
+      ;;
+    *) return 1 ;;
+  esac
+}
+
+layered_snap_list() {
+  case "${LAYOUT:-single}" in
+    lvm-*) lvs "$VG" >/dev/null ;;
+    *) return 1 ;;
+  esac
+}
+
+layered_snapscale_delete() {
+  case "${LAYOUT:-single}" in
+    lvm-*)
+      local i
+      for i in $(seq 1 "$1"); do
+        lvremove -fy "$VG/scale$i" >/dev/null 2>&1 || true
+      done
+      ;;
     *) return 1 ;;
   esac
 }

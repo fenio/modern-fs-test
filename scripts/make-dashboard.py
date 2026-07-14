@@ -154,7 +154,9 @@ DOCS = {
     "snapscale_create_ms": (
         "500 snapshots are created back-to-back with no data churn between them (isolating "
         "metadata scaling from retention cost); this is the median create latency of the "
-        "last 20. Phase 5.5.",
+        "last 20. LVM participates with 24M snapshots (500 must fit the VG) — no churn "
+        "means no CoW amplification during creation, and snapscale_count in the JSON "
+        "records how far dm-snapshot actually got if it stops early. Phase 5.5.",
         [("run-bench.sh (Phase 5.5)", "scripts/run-bench.sh")]),
     "snapscale_remount_ms": (
         "Full unmount + mount (zpool export/import for ZFS) with 500 snapshots present. "

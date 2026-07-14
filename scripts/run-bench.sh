@@ -227,8 +227,19 @@ SNAPSCALE_TOTAL_S=null
 SNAPSCALE_LIST_MS=null
 SNAPSCALE_REMOUNT_MS=null
 SNAPSCALE_DELETE_MS=null
-case "$FS" in btrfs|zfs|bcachefs)
+# native-snapshot filesystems, plus LVM: with no churn between snapshots
+# there's no CoW amplification during creation, so dm-snapshot can
+# genuinely attempt 500 small snapshots — and wherever it stops,
+# snapscale_count records how far the classic stack got.
+if [[ "$FS" =~ ^(btrfs|zfs|bcachefs)$ || "$LAYOUT" == lvm-* ]]; then
+  LVM_SNAP_SIZE=24M  # snapshots must fit the VG's free half
   SNAPSCALE_N=${SNAPSCALE_COUNT:-500}
+  if [[ "$LAYOUT" == lvm-* ]] && [ "$SNAPSCALE_N" -gt 150 ]; then
+    # old-style snapshot cost grows with count (each create suspends an
+    # origin carrying every prior snapshot) — 500 would take ~25min of
+    # creates; 150 shows the curve within the job's time budget
+    SNAPSCALE_N=150
+  fi
   log "phase: snapshot-count scaling ($SNAPSCALE_N snapshots)"
   t0=$(now_ms)
   TAIL_MS=()
@@ -262,8 +273,8 @@ case "$FS" in btrfs|zfs|bcachefs)
     SNAPSCALE_DELETE_MS=$(( $(now_ms) - t0 ))
   fi
   log "snapscale: $SNAPSCALE_N snaps in ${SNAPSCALE_TOTAL_S}s, create@tail ${SNAPSCALE_CREATE_MS}ms, list ${SNAPSCALE_LIST_MS}ms, remount ${SNAPSCALE_REMOUNT_MS}ms, delete ${SNAPSCALE_DELETE_MS}ms"
-  ;;
-esac
+  LVM_SNAP_SIZE=2G  # aging/divergence snapshots go back to full size
+fi
 
 # --- Phase 6: compression (zstd, 75%-compressible data) -------------------
 log "phase: compression"
