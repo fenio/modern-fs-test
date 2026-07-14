@@ -34,6 +34,8 @@ NOISY = {
     "lat_load_p99_ms", "lat_load_max_ms", "lat_idle_p99_ms",
     "nearfull95_write_mbps", "nearfull99_write_mbps",
     "snapscale_remount_ms", "snapscale_list_ms", "snapscale_delete_ms",
+    "smalltree_create_ms",  # metadata-heavy create is cache/VM sensitive
+    "lat_load_ops",
 }
 
 

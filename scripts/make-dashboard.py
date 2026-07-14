@@ -89,7 +89,10 @@ DOCS = {
         "The same trivial 4k+fsync op, but measured for 30s while a second fio job floods "
         "the filesystem with 1M streaming writes. 'How long until my prompt comes back': "
         "CoW commit entanglement makes the tiny fsync wait for the big writer's transaction. "
-        "Phase 3.5.",
+        "Reported only when at least 20 ops completed — below that a percentile is "
+        "statistically void (fio's log-histogram bins even produce identical bucket-edge "
+        "values across machines); in the starvation regime the ops-completed metric is the "
+        "measurement. Phase 3.5.",
         [("run-bench.sh (Phase 3.5)", "scripts/run-bench.sh")]),
     "lat_load_max_ms": (
         "Worst single trivial-op fsync observed during the 30s streaming-write flood — the "

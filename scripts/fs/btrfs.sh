@@ -88,7 +88,10 @@ fs_scrub() {
   local out found corrected
   out=$(btrfs scrub start -B "$MNT" 2>&1) || true  # exits non-zero when errors were found
   echo "$out" >&2
-  found=$(grep -oE 'csum=[0-9]+' <<<"$out" | head -1 | cut -d= -f2)
+  # Error summary can list several categories (read= verify= csum= super=);
+  # Corrected covers all of them, so "found" must too
+  found=$(grep -E '^.*Error summary:' <<<"$out" | head -1 \
+    | grep -oE '[a-z]+=[0-9]+' | cut -d= -f2 | paste -sd+ - | bc)
   corrected=$(grep -iE '^[[:space:]]*corrected' <<<"$out" | grep -oE '[0-9]+' | head -1)
   echo "${found:-null} ${corrected:-null}"
 }

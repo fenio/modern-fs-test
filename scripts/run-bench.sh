@@ -120,6 +120,12 @@ LAT_LOAD_MAX=$(jq '([.jobs[] | select(.jobname == "tiny")][0].sync.lat_ns.max //
 # immune to fio's log-histogram binning, meaningful even when individual
 # ops take seconds and the percentile has almost no samples
 LAT_LOAD_OPS=$(jq '[.jobs[] | select(.jobname == "tiny")][0].write.total_ios // null' "$out")
+# a percentile from a handful of samples is void, and fio's log-histogram
+# bins make it a bucket-edge constant (17112.76...) or even p99 > max —
+# below 20 completed ops the ops count IS the measurement
+if [ "$LAT_LOAD_OPS" != null ] && [ "$LAT_LOAD_OPS" -lt 20 ]; then
+  LAT_LOAD_P99=null
+fi
 rm -f "$DATA"/lat-idle* "$DATA"/lat-load* "$DATA"/tiny*
 log "trivial-op p99: idle ${LAT_IDLE_P99%.*}ms, under load ${LAT_LOAD_P99%.*}ms (worst ${LAT_LOAD_MAX%.*}ms)"
 
