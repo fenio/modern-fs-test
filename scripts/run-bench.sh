@@ -313,6 +313,13 @@ if [ "${FS_REFLINK:-0}" = 1 ]; then
   t0=$(now_ms)
   if cp --reflink=always "$DATA/read.dat" "$DATA/reflink-copy"; then
     REFLINK_MS=$(( $(now_ms) - t0 ))
+    # deep-feature check: does FIEMAP actually report the extents as
+    # shared? (checked before the clone-overwrite unshares them)
+    if filefrag -v "$DATA/reflink-copy" 2>/dev/null | grep -qw shared; then
+      REFLINK_FIEMAP_SHARED=true
+    else
+      REFLINK_FIEMAP_SHARED=false
+    fi
     out=$(fio_json div-clone --filename="$DATA/reflink-copy" --rw=randwrite \
       --bs=4k --size="$READ_SIZE" --io_size=128M --end_fsync=1)
     DIV_CLONE_MBPS=$(jq '.jobs[0].write.bw_bytes / 1048576' "$out")
@@ -525,6 +532,7 @@ jq -n \
   --argjson compress_ratio "$COMP_RATIO" \
   --argjson compress_write_mbps "$COMP_MBPS" \
   --argjson reflink_ms "$REFLINK_MS" \
+  --argjson reflink_fiemap_shared "$REFLINK_FIEMAP_SHARED" \
   --argjson divergence_plain_mbps "$DIV_PLAIN_MBPS" \
   --argjson divergence_clone_mbps "$DIV_CLONE_MBPS" \
   --argjson divergence_snap_mbps "$DIV_SNAP_MBPS" \
@@ -575,6 +583,7 @@ jq -n \
               compress_ratio: $compress_ratio,
               compress_write_mbps: $compress_write_mbps,
               reflink_ms: $reflink_ms,
+              reflink_fiemap_shared: $reflink_fiemap_shared,
               divergence_plain_mbps: $divergence_plain_mbps,
               divergence_clone_mbps: $divergence_clone_mbps,
               divergence_snap_mbps: $divergence_snap_mbps,

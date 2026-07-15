@@ -44,8 +44,7 @@ essential for ZFS and bcachefs, which are out-of-tree, where the kernel
 version alone doesn't identify what actually ran. Shown in the dashboard
 table, stored in the JSON.
 
-Default matrix — 17 configurations (4 devices, 2-copy redundancy, plus
-baselines):
+Default matrix — 22 configurations (4 devices, plus baselines):
 
 - **ext4 single** — one device, the "what does any of this cost" anchor
 - **ext4 on md raid10** — the classic layered stack
@@ -67,6 +66,17 @@ baselines):
   Compression runs on all of them, so encrypt-after-compress vs
   opaque-blocks falls out of the existing zstd phase
 - **btrfs** — `-d raid1 -m raid1`
+- **Dual-parity (raid6-class)** — zfs `raidz2`, btrfs `-d raid6 -m raid1c3`
+  (parity metadata is discouraged — write hole), ext4 on md raid6.
+  bcachefs erasure coding is still experimental and not run — that hole is
+  itself a datapoint (community request)
+- **xfs on a ZFS zvol** — the Franken-stack people actually run: XFS
+  semantics on top; ZFS snapshots (fsfreeze-consistent), self-healing,
+  and compression underneath (community request)
+- **xfs on LVM raid10 + dm-integrity** (`--raidintegrity y`) — per-sector
+  checksums give the classic stack detection AND correction: the fairest
+  classic-vs-CoW comparison in the corruption phase, with the performance
+  tax quantified (community request)
 - **ZFS** — striped mirror pairs (raid10-like), at the default 128K recordsize
   and again at `recordsize=8k` — one-variable proof of how much of ZFS's
   small-random-write cost is configuration, not design
@@ -185,6 +195,11 @@ CoW-specific phases (the behaviors nothing mainstream benchmarks):
 
 - [ ] **send/receive**: full + incremental stream throughput (btrfs, ZFS);
       rsync over the classic stack as the contrast; bcachefs: not available
+- [ ] **Partial device loss**: device disappears briefly and returns — md
+      write-intent bitmaps, ZFS delta resilver, bcachefs journal catch-up;
+      a different (and common) recovery scenario than full-device rebuild
+- [ ] **Stratis** (XFS on dm-thin/dm-integrity/dm-crypt, managed) — arguably
+      the closest classic-stack analogue to btrfs (community suggestion)
 - [ ] **ext4 fscrypt** variant (directory-level encryption — the third model
       next to native and block-layer)
 

@@ -13,9 +13,11 @@ layered_make_dev() {
       LAYERED_DEV=${DEVICES[0]}
       ;;
     md-*)
-      # --assume-clean: skip the initial resync, which would otherwise
+      # level from the layout name (md-raid10 -> 10, md-raid6 -> 6);
+      # --assume-clean skips the initial resync, which would otherwise
       # compete with the benchmark for IO
-      mdadm --create /dev/md/fsbench --run --level=10 \
+      local level=${LAYOUT#md-raid}; level=${level%%-*}
+      mdadm --create /dev/md/fsbench --run --level="$level" \
         --raid-devices="${#DEVICES[@]}" --assume-clean "${DEVICES[@]}"
       LAYERED_DEV=/dev/md/fsbench
       ;;
@@ -47,9 +49,14 @@ EOF
       pvcreate -y "${LVM_PVS[@]}"
       vgcreate "$VG" "${LVM_PVS[@]}"
       # 50%FREE leaves VG space for the CoW snapshots taken while aging;
-      # --nosync skips the initial mirror sync (same reason as md above)
+      # --nosync skips the initial mirror sync (same reason as md above).
+      # -int layouts add dm-integrity under each raid leg: per-sector
+      # checksums give the classic stack detection AND correction — the
+      # fairest comparison against CoW checksumming (community request).
+      local integrity=()
+      case "$LAYOUT" in *-int) integrity=(--raidintegrity y) ;; esac
       lvcreate --type raid10 -i $(( ${#DEVICES[@]} / 2 )) -m 1 --nosync \
-        -l 50%FREE -n bench -y "$VG"
+        "${integrity[@]}" -l 50%FREE -n bench -y "$VG"
       LAYERED_DEV="/dev/$VG/bench"
       ;;
     *)

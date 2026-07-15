@@ -28,14 +28,19 @@ ENTITY_ORDER = [
     "xfs/single",
     "xfs/md-raid10",
     "xfs/lvm-raid10",
+    "xfs/zvol",
+    "xfs/lvm-raid10-int",
     "zfs/mirror",
     "zfs/mirror-8k",
     "zfs/single",
+    "zfs/raidz2",
     "btrfs/raid1",
     "btrfs/single",
+    "btrfs/raid6",
     "bcachefs/replicas2",
     "bcachefs/single",
     "ext4/md-raid10-luks",
+    "ext4/md-raid6",
     "zfs/mirror-enc",
     "btrfs/raid1-luks",
     "bcachefs/replicas2-enc",
@@ -182,7 +187,9 @@ DOCS = {
     "reflink_ms": (
         "cp --reflink=always of the 2G file — a metadata-only clone. btrfs clones the "
         "extent tree in one operation (~ms); bcachefs reflinks per extent (~200ms); ext4 "
-        "cannot; ZFS block cloning is off by default. Phase 6 (divergence).",
+        "cannot; ZFS block cloning is off by default. The table also records whether "
+        "FIEMAP (filefrag -v) actually reports the clone's extents as shared — the deep "
+        "plumbing check. Phase 6 (divergence).",
         [("run-bench.sh (Phase 6, divergence)", "scripts/run-bench.sh")]),
     "divergence_plain_mbps": (
         "Baseline for the unshare penalty: 128M of random 4k overwrites (end_fsync) into a "
@@ -547,7 +554,7 @@ footer a { color: var(--ink-2); }
 <script>
 const DATA = __DATA__;
 const SLOTS = ["--s1","--s2","--s3","--s4","--s5","--s6","--s7","--s8"];
-const DASH = ["", "7 4", "2 4", "10 3 2 3"];  // solid/dashed/dotted/dash-dot per family variant
+const DASH = ["", "7 4", "2 4", "10 3 2 3", "1 3", "14 4"];  // per family variant: solid/dashed/dotted/dash-dot/fine-dot/long-dash
 const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const color = e => css(SLOTS[e.fi % SLOTS.length]);
 const dash = e => DASH[e.vi % DASH.length];
@@ -834,6 +841,8 @@ const cols = [
   {label: "scrub repaired", get: (e, r, c) => r.scrub_repaired},
   {label: "data intact after corruption", str: true,
    get: (e, r, c) => r.data_intact == null ? null : (r.data_intact ? "yes" : "NO")},
+  {label: "FIEMAP shows shared extents", str: true,
+   get: (e, r, c) => r.reflink_fiemap_shared == null ? null : (r.reflink_fiemap_shared ? "yes" : "NO")},
   {label: "delete at 100% full", str: true,
    get: (e, r, c) => r.enospc_delete_ok == null ? null : (r.enospc_delete_ok ? "yes" : "NO")},
   {label: "writable after delete", str: true,

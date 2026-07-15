@@ -12,7 +12,8 @@ case "$FS" in
     apt-get install -yqq fio jq mdadm lvm2
     ;;
   xfs)
-    apt-get install -yqq fio jq xfsprogs mdadm lvm2
+    # zfsutils for the zvol layout (XFS on a ZFS zvol)
+    apt-get install -yqq fio jq xfsprogs mdadm lvm2 zfsutils-linux
     ;;
   btrfs)
     apt-get install -yqq fio jq btrfs-progs btrfs-compsize

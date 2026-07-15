@@ -10,6 +10,8 @@ fs_setup() {
   local vdevs=() i
   if [ "${LAYOUT:-mirror}" = single ]; then
     vdevs=("${DEVICES[0]}")
+  elif [ "${LAYOUT:-mirror}" = raidz2 ]; then
+    vdevs=(raidz2 "${DEVICES[@]}")
   else
     for ((i = 0; i < ${#DEVICES[@]}; i += 2)); do
       if [ -n "${DEVICES[i+1]:-}" ]; then

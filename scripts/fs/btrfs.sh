@@ -13,6 +13,15 @@ fs_setup() {
       luks_wrap_devices
       ;;
   esac
+  if [ "$profile" = raid6 ]; then
+    # raid1c3 metadata: parity-raid metadata is strongly discouraged
+    # (write hole) — this is the pairing the btrfs docs recommend
+    mkfs.btrfs -f -d raid6 -m raid1c3 "${DEVICES[@]}"
+    mount -o noatime "${DEVICES[0]}" "$MNT"
+    btrfs subvolume create "$MNT/data"
+    DATA="$MNT/data"
+    return 0
+  fi
   if [ "$profile" = single ]; then
     # -m single: the default DUP metadata would double metadata writes
     # vs the other single-device filesystems (thanks to the Reddit
