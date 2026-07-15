@@ -385,7 +385,27 @@ def main():
         print(f"no result JSON found under {args.runs}", file=sys.stderr)
         sys.exit(1)
 
+    # "Latest" view: per-entity, the newest run that actually has data
+    # (looking back up to 5 runs) — a mid-rerun deploy or a failed job
+    # shouldn't punch holes in the front page. Entities not from the
+    # newest run are marked stale and flagged in the UI.
+    merged, stale = {}, []
+    newest = runs[-1]
+    for r in runs[-5:]:
+        pass
+    seen_entities = {e for r in runs[-5:] for e in r["results"]}
+    for e in sorted(seen_entities):
+        for r in reversed(runs[-5:]):
+            if e in r["results"]:
+                merged[e] = r["results"][e]
+                if r is not newest:
+                    stale.append(e)
+                break
+
     data = {
+        "latest": {"date": newest["date"], "kernel": newest["kernel"],
+                   "results": merged},
+        "stale": stale,
         "entities": entity_list(runs),
         "metrics": [
             {"key": k, "label": l, "unit": u, "better": b}
@@ -530,7 +550,8 @@ const key = e =>
   `<svg class="key" viewBox="0 0 20 10"><line x1="1" y1="5" x2="19" y2="5"
    stroke="${color(e)}" stroke-width="2.5" stroke-linecap="round"
    ${dash(e) ? `stroke-dasharray="${dash(e)}"` : ""}/></svg>`;
-const latest = DATA.runs[DATA.runs.length - 1];
+const latest = DATA.latest;
+const isStale = id => DATA.stale.includes(id);
 const ents = DATA.entities;
 const fmt = v => v == null ? "—"
   : typeof v === "string" ? v
@@ -631,7 +652,7 @@ function drawBars(rows, metric) {
     const y = 4 + i * rowH;
     const name = svgel("text", {x: labW - 8, y: y + 15.5, "text-anchor": "end",
       fill: css("--ink-2")});
-    name.textContent = e.id;
+    name.textContent = e.id + (isStale(e.id) ? " \u2020" : "");
     svg.appendChild(name);
     // baseline tick
     svg.appendChild(svgel("rect", {x: labW, y: y + 2, width: 1, height: rowH - 6,
@@ -848,7 +869,7 @@ function buildTable(view) {
     });
     rows.forEach(({e, vals}) => {
       tbl.appendChild(el("tr", {},
-        `<td><span style="display:inline-flex;align-items:center;gap:7px">${key(e)}${e.id}</span></td>` +
+        `<td><span style="display:inline-flex;align-items:center;gap:7px">${key(e)}${e.id}${isStale(e.id) ? " \u2020" : ""}</span></td>` +
         vals.slice(1, cols.length - 1).map(v => `<td>${fmt(v)}</td>`).join("") +
         `<td style="text-align:left">${vals[cols.length - 1] || "—"}</td>`));
     });
@@ -956,7 +977,8 @@ function rebuild() {
 
   content.appendChild(el("h2", {}, "Latest run"));
   content.appendChild(el("p", {class: "note"},
-    "One card per metric, sorted best-first — the per-card button switches to grouped matrix order. Every value also appears in the table below."));
+    "One card per metric, sorted best-first — the per-card button switches to grouped matrix order. Every value also appears in the table below." +
+    (DATA.stale.length ? " \u2020 = this configuration is missing from the newest run (mid-rerun or failed job); showing its most recent result instead." : "")));
   const grid = el("div", {class: "grid"});
   DATA.metrics.forEach(m => { const c = barCard(m, view); if (c) grid.appendChild(c); });
   content.appendChild(grid);
