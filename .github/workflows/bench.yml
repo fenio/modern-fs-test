@@ -3,6 +3,10 @@ name: fs-bench
 on:
   push:
     branches: [main]
+    # docs-only commits must not trigger (or, via the concurrency group,
+    # CANCEL) benchmark runs - a README push once killed a 23-job run
+    paths-ignore:
+      - '**.md'
   schedule:
     - cron: '17 */2 * * *'  # every 2 hours at :17 (GitHub may delay/skip under load)
   workflow_dispatch:
