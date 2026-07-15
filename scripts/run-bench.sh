@@ -300,6 +300,7 @@ fi
 # reflink clone, freshly-snapshotted file. XFS participates via reflink,
 # LVM via its snapshots: integrated vs classic on both axes.
 REFLINK_MS=null
+REFLINK_FIEMAP_SHARED=null
 DIV_PLAIN_MBPS=null
 DIV_CLONE_MBPS=null
 DIV_SNAP_MBPS=null
