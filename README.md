@@ -90,7 +90,10 @@ Default matrix — 22 configurations (4 devices, plus baselines):
 
 Every push/2-hourly cron builds each filesystem across 4 loop devices backed by
 sparse files, runs the suite, and publishes a results table in the job summary
-plus JSON artifacts.
+plus JSON artifacts. Each job's artifact also contains a **full command trace**
+(`raw/<config>-trace.log`) — every command executed, arguments fully expanded,
+with source file and line — so "what exactly was run" is never a question.
+(`BENCH_TRACE=1` mirrors it into the live log instead.)
 
 **Interpret CI numbers carefully.** Runners are shared VMs and all "devices"
 live on one virtual disk, so absolute MB/s is meaningless and RAID striping

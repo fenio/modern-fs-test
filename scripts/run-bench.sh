@@ -22,6 +22,18 @@ source "$SCRIPT_DIR/fs/$FS.sh"
 require_root
 mkdir -p "$RESULTS_DIR/raw"
 
+# Full command trace (every command, with source file and line) into the
+# artifacts — the readable job log keeps only the phase lines and tool
+# output, while raw/<id>-trace.log answers "what exactly was run".
+# BENCH_TRACE=1 mirrors the trace into the live log instead.
+export PS4='+ [${BASH_SOURCE##*/}:${LINENO}] '
+if [ "${BENCH_TRACE:-0}" = 1 ]; then
+  set -x
+else
+  exec {BASH_XTRACEFD}>"$RESULTS_DIR/raw/$BENCH_ID-trace.log"
+  set -x
+fi
+
 setup_devices
 trap teardown_devices EXIT
 
