@@ -44,7 +44,8 @@ essential for ZFS and bcachefs, which are out-of-tree, where the kernel
 version alone doesn't identify what actually ran. Shown in the dashboard
 table, stored in the JSON.
 
-Default matrix — 22 configurations (4 devices, plus baselines):
+Default matrix — 23 configurations (4 devices, plus baselines; the
+authoritative list is the matrix in `.github/workflows/bench.yml`):
 
 - **ext4 single** — one device, the "what does any of this cost" anchor
 - **ext4 on md raid10** — the classic layered stack
