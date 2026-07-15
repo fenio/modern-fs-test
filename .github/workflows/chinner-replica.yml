@@ -1,0 +1,62 @@
+name: chinner-replica
+
+# One-off experiment (manual dispatch): replicate the scale of Dave
+# Chinner's 2021 btrfs snapshot-aging pathology report — 1000 snapshots,
+# ~40G of 4k random overwrite churn (LWN 867427) — on today's kernel,
+# with bcachefs as the ratio baseline exactly as in the original.
+# Not part of the regular matrix; results land as artifacts + summary.
+
+on:
+  workflow_dispatch:
+    inputs:
+      iters:
+        description: 'aging iterations (snapshots)'
+        default: '1000'
+      churn:
+        description: 'churn per iteration'
+        default: '40M'
+
+permissions:
+  contents: read
+
+jobs:
+  replica:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - fs: btrfs
+            layout: single
+          - fs: bcachefs
+            layout: single
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install dependencies
+        run: sudo scripts/install-deps.sh ${{ matrix.fs }}
+
+      - name: Run replica
+        run: |
+          sudo env RESULTS_DIR="$PWD/results" \
+            DEV_SIZE=52G AGING_SIZE=4G \
+            AGING_ITERS='${{ inputs.iters }}' AGING_IO='${{ inputs.churn }}' \
+            SNAPSCALE_COUNT=50 \
+            CALIB_MIN_SEQ_MBPS=300 CALIB_MIN_RAND_IOPS=8000 \
+            scripts/run-bench.sh ${{ matrix.fs }} ${{ matrix.layout }}
+
+      - name: Summary
+        if: always()
+        run: |
+          scripts/summarize.sh results/result-*.json >> "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          jq '.results.aging_mbps' results/result-*.json >> "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: chinner-replica-${{ matrix.fs }}
+          path: results/
+          if-no-files-found: ignore
