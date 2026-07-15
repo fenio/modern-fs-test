@@ -217,7 +217,9 @@ DOCS = {
         "sync_percent polling. The CoW filesystems move only their share of the LIVE data "
         "(~8G logical in CI by this phase), so on identical loop devices they converge to "
         "similar times — md resyncs the full member regardless of contents, which is the "
-        "spread to look at. Phase 7.",
+        "spread to look at. md/lvm values are near-identical across ext4/xfs/LUKS "
+        "variants by construction — the resync runs below the filesystem and neither "
+        "knows nor cares what sits on top. Phase 7.",
         [("run-bench.sh (Phase 7)", "scripts/run-bench.sh"),
          ("fs_rebuild per backend", "scripts/fs"),
          ("layered_rebuild (md/lvm)", "scripts/lib/layered.sh")]),
@@ -232,7 +234,10 @@ DOCS = {
         "zfs-8k counts ~16x more records than default zfs for the same damage) and vary "
         "with how much allocated data the corruption window happens to overlap. On md/lvm "
         "the verdict is probabilistic: reads round-robin between legs, so a lucky run can "
-        "read everything from the good copy and report intact. Phase 8.",
+        "read everything from the good copy and report intact. md/lvm check durations are "
+        "filesystem-independent (block-level member scans), so their ext4/xfs/LUKS variants "
+        "report near-identical times — and lvm scans ~half of md's time because the bench "
+        "LV covers half the VG. Phase 8.",
         [("run-bench.sh (Phase 8)", "scripts/run-bench.sh"),
          ("fs_scrub per backend", "scripts/fs"),
          ("corrupt_device", "scripts/lib/common.sh")]),
