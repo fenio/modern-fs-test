@@ -86,6 +86,14 @@ RANDWRITE_IOPS=$(jq '.jobs[0].write.iops' "$out")
 FSYNC_P99_MS=$(jq '(.jobs[0].sync.lat_ns.percentile."99.000000" // null) | if . then . / 1000000 else null end' "$out")
 FSYNC_P999_MS=$(jq '(.jobs[0].sync.lat_ns.percentile."99.900000" // null) | if . then . / 1000000 else null end' "$out")
 rm -f "$DATA"/randwrite*
+# 4-thread variant: filesystem locking architecture only shows under
+# concurrency (bcachefs author's request) — 4 threads = the runner's
+# 4 vCPUs, each with its own file
+out=$(fio_json randwrite-par --directory="$DATA" --rw=randwrite --bs=4k \
+  --size=256M --runtime="$RUNTIME" --time_based --fdatasync=16 \
+  --numjobs=4 --group_reporting)
+RANDWRITE4_IOPS=$(jq '.jobs[0].write.iops' "$out")
+rm -f "$DATA"/randwrite-par*
 
 # --- Phase 3: random read (cold cache) ------------------------------------
 log "phase: random read 4k, ${RUNTIME}s"
@@ -159,6 +167,28 @@ for i in range(20000):
 PY
 sync
 SMALLTREE_CREATE_MS=$(( $(now_ms) - t0 ))
+# parallel variant: 4 workers, disjoint directory subsets — metadata
+# lock contention (tree locks vs per-AG allocation vs b-tree design)
+t0=$(now_ms)
+python3 - "$DATA/tree4" <<'PY'
+import multiprocessing, os, random, sys
+base = sys.argv[1]
+def worker(w):
+    rnd = random.Random(1000 + w)
+    for i in range(5000):
+        n = w * 5000 + i
+        d = os.path.join(base, "d%d" % ((n % 200) // 20), "d%d" % (n % 200))
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "f%d" % n), "wb") as f:
+            f.write(os.urandom(rnd.choice((1024, 2048, 4096, 8192))))
+# fork context: 3.14 defaults to forkserver, which cannot re-import a
+# heredoc __main__ and kills the workers
+with multiprocessing.get_context("fork").Pool(4) as p:
+    p.map(worker, range(4))
+PY
+sync
+SMALLTREE_CREATE4_MS=$(( $(now_ms) - t0 ))
+rm -rf "$DATA/tree4"
 fs_drop_caches || true
 t0=$(now_ms)
 cp -r "$DATA/tree" "$DATA/tree2"
@@ -580,6 +610,8 @@ jq -n \
   --argjson lat_load_max_ms "$LAT_LOAD_MAX" \
   --argjson lat_load_ops "$LAT_LOAD_OPS" \
   --argjson smalltree_create_ms "$SMALLTREE_CREATE_MS" \
+  --argjson smalltree_create4_ms "$SMALLTREE_CREATE4_MS" \
+  --argjson randwrite4_iops "$RANDWRITE4_IOPS" \
   --argjson smalltree_cp_ms "$SMALLTREE_CP_MS" \
   --argjson smalltree_rm_ms "$SMALLTREE_RM_MS" \
   --argjson aging_mbps "$AGING_JSON" \
@@ -635,6 +667,8 @@ jq -n \
               lat_load_max_ms: $lat_load_max_ms,
               lat_load_ops: $lat_load_ops,
               smalltree_create_ms: $smalltree_create_ms,
+              smalltree_create4_ms: $smalltree_create4_ms,
+              randwrite4_iops: $randwrite4_iops,
               smalltree_cp_ms: $smalltree_cp_ms,
               smalltree_rm_ms: $smalltree_rm_ms,
               aging_mbps: $aging_mbps,

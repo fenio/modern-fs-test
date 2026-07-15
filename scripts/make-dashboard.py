@@ -57,6 +57,20 @@ DOCS = {
         "fio writes a fresh file sequentially: bs=1M, size=SEQ_SIZE (2G in CI), one job, "
         "fsync at the end (--end_fsync=1). Reported as write bandwidth. Phase 1.",
         [("run-bench.sh (Phase 1)", "scripts/run-bench.sh")]),
+    "randwrite4_iops": (
+        "The Phase 2 random-write workload with --numjobs=4 (one file per thread, "
+        "fdatasync every 16 IOs, 4 threads = the runner's 4 vCPUs). Filesystem locking "
+        "architecture only shows under concurrency — per the bcachefs author, this is "
+        "where the biggest cross-filesystem variation lives. Compare against the "
+        "single-thread card: scaling well above 1x is parallelism, below 1x is lock "
+        "contention. Phase 2.",
+        [("run-bench.sh (Phase 2)", "scripts/run-bench.sh")]),
+    "smalltree_create4_ms": (
+        "The 20k-file tree created by 4 concurrent workers on disjoint directory "
+        "subsets — metadata lock contention (btrfs tree locks vs XFS per-AG "
+        "parallelism vs bcachefs b-tree design). Compare with the single-worker "
+        "card. Phase 3.6.",
+        [("run-bench.sh (Phase 3.6)", "scripts/run-bench.sh")]),
     "randwrite_iops": (
         "fio random 4k writes over a 1G file for 30s, fdatasync every 16 IOs "
         "(--rw=randwrite --bs=4k --fdatasync=16 --time_based). Reported as IOPS. Phase 2.",
@@ -283,6 +297,7 @@ DOCS = {
 METRICS = [
     ("seqwrite_mbps", "Sequential write", "MB/s", "higher"),
     ("randwrite_iops", "Random write, 4k + fsync", "IOPS", "higher"),
+    ("randwrite4_iops", "Random write, 4 threads", "IOPS", "higher"),
     ("fsync_p99_ms", "fsync p99 latency", "ms", "lower"),
     ("fsync_p999_ms", "fsync p99.9 latency", "ms", "lower"),
     ("randread_iops", "Random read, 4k cold cache", "IOPS", "higher"),
@@ -293,6 +308,7 @@ METRICS = [
     ("lat_load_max_ms", "Trivial-op worst case under load", "ms", "lower"),
     ("lat_load_ops", "Trivial ops completed under load", "ops", "higher"),
     ("smalltree_create_ms", "Create 20k-file tree", "ms", "lower"),
+    ("smalltree_create4_ms", "Create 20k-file tree, 4 workers", "ms", "lower"),
     ("smalltree_cp_ms", "cp -r 20k-file tree, cold", "ms", "lower"),
     ("smalltree_rm_ms", "rm -rf 20k-file tree", "ms", "lower"),
     ("sparse_create_ms", "ftruncate empty file to 1G", "ms", "lower"),
