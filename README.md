@@ -88,6 +88,37 @@ authoritative list is the matrix in `.github/workflows/bench.yml`):
 - **bcachefs** — `--replicas=2` (kernel module built via DKMS from
   [apt.bcachefs.org](https://apt.bcachefs.org/) since bcachefs left mainline in 6.17)
 
+## The point is data integrity, not the winner's podium
+
+Benchmark charts invite "which is fastest". For long-term storage that is
+the wrong question — the right one is **which stack tells you the truth
+about your data**, and it's why this suite exists (the corruption phase
+re-proves it every couple of hours):
+
+- **ext4/xfs on md or LVM raid — the default "safe" Linux setup — has no
+  data checksums.** Raid protects against a *missing* disk, not a *lying*
+  one: when a copy goes bad (disk firmware, cable, controller, bad RAM,
+  power cut mid-write), the array cannot tell which copy is right. In our
+  corruption test these stacks return garbage to the application **with no
+  error whatsoever** — reads succeed, exit codes are 0, and the damage
+  propagates into backups silently. A scrub *counts* mismatches; it cannot
+  say which side is correct.
+- **btrfs, ZFS, and bcachefs verify every read against checksums** and,
+  given any redundancy, repair the bad copy on the fly. Every corruption
+  run so far: all injected errors detected, all repaired, file contents
+  intact — including under native encryption and on parity layouts.
+- **The classic stack *can* buy the same guarantee** — LVM raid with
+  `--raidintegrity y` (dm-integrity) is the first classic layout to pass
+  our corruption phase — but almost nobody runs it, and the performance
+  tax is measurable (that's the `xfs/lvm-raid10-int` row).
+
+Speed matters and we measure it honestly. But if you keep data you care
+about — photos, archives, the family's one copy of anything — on a
+non-checksumming stack, no benchmark number compensates for corruption you
+won't discover until years later. That risk is invisible in every classic
+filesystem benchmark; here it's a first-class result
+(*corruption + scrub* on the dashboard).
+
 ## How it runs
 
 ### CI (GitHub Actions, loop devices)
@@ -218,6 +249,11 @@ CoW-specific phases (the behaviors nothing mainstream benchmarks):
       and thin-on-VDO is a documented configuration.
 - [ ] **Stratis** (XFS on dm-thin/dm-integrity/dm-crypt, managed) — arguably
       the closest classic-stack analogue to btrfs (community suggestion)
+- [ ] **NVMe cache tiers** (community request): bcachefs
+      foreground/background targets, ZFS special/log/cache vdevs, LVM
+      dm-cache — needs real mixed hardware; on CI loop devices both "tiers"
+      are the same cloud SSD, so an honest cache benchmark is impossible
+      there (see *Real hardware* above)
 - [ ] **ext4 fscrypt** variant (directory-level encryption — the third model
       next to native and block-layer)
 
