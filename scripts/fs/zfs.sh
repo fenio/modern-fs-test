@@ -8,19 +8,26 @@ POOL=fsbench
 fs_setup() {
   modprobe zfs
   local vdevs=() i
-  if [ "${LAYOUT:-mirror}" = single ]; then
-    vdevs=("${DEVICES[0]}")
-  elif [ "${LAYOUT:-mirror}" = raidz2 ]; then
-    vdevs=(raidz2 "${DEVICES[@]}")
-  else
-    for ((i = 0; i < ${#DEVICES[@]}; i += 2)); do
-      if [ -n "${DEVICES[i+1]:-}" ]; then
-        vdevs+=(mirror "${DEVICES[i]}" "${DEVICES[i+1]}")
-      else
-        vdevs+=("${DEVICES[i]}")
-      fi
-    done
-  fi
+  case "${LAYOUT:-mirror}" in
+    single)
+      vdevs=("${DEVICES[0]}")
+      ;;
+    raidz1*)
+      vdevs=(raidz1 "${DEVICES[@]}")
+      ;;
+    raidz2*)
+      vdevs=(raidz2 "${DEVICES[@]}")
+      ;;
+    *)
+      for ((i = 0; i < ${#DEVICES[@]}; i += 2)); do
+        if [ -n "${DEVICES[i+1]:-}" ]; then
+          vdevs+=(mirror "${DEVICES[i]}" "${DEVICES[i+1]}")
+        else
+          vdevs+=("${DEVICES[i]}")
+        fi
+      done
+      ;;
+  esac
   # layout "…-8k" isolates the recordsize variable: default 128K records
   # amplify 4k random overwrites 32x (read-modify-write + snapshot pinning)
   local extra=()

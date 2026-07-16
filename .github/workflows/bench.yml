@@ -83,6 +83,17 @@ jobs:
             layout: raidz2
             # default recordsize — same snapshot-retention math as mirror
             aging_iters: 10
+          - fs: zfs
+            layout: raidz1
+            aging_iters: 10
+          # raidz + native encryption (community request): parity math and
+          # AES-256-GCM stack, vs mirror-enc which pays only the crypto
+          - fs: zfs
+            layout: raidz1-enc
+            aging_iters: 10
+          - fs: zfs
+            layout: raidz2-enc
+            aging_iters: 10
           - fs: bcachefs
             layout: replicas2
           - fs: bcachefs

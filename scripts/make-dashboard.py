@@ -34,6 +34,7 @@ ENTITY_ORDER = [
     "zfs/mirror-8k",
     "zfs/single",
     "zfs/raidz2",
+    "zfs/raidz1",
     "btrfs/raid1",
     "btrfs/single",
     "btrfs/raid6",
@@ -43,6 +44,8 @@ ENTITY_ORDER = [
     "ext4/md-raid10-luks",
     "ext4/md-raid6",
     "zfs/mirror-enc",
+    "zfs/raidz1-enc",
+    "zfs/raidz2-enc",
     "btrfs/raid1-luks",
     "bcachefs/replicas2-enc",
 ]

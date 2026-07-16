@@ -44,7 +44,7 @@ essential for ZFS and bcachefs, which are out-of-tree, where the kernel
 version alone doesn't identify what actually ran. Shown in the dashboard
 table, stored in the JSON.
 
-Default matrix — 23 configurations (4 devices, plus baselines; the
+Default matrix — 26 configurations (4 devices, plus baselines; the
 authoritative list is the matrix in `.github/workflows/bench.yml`):
 
 - **ext4 single** — one device, the "what does any of this cost" anchor
@@ -67,7 +67,10 @@ authoritative list is the matrix in `.github/workflows/bench.yml`):
   Compression runs on all of them, so encrypt-after-compress vs
   opaque-blocks falls out of the existing zstd phase
 - **btrfs** — `-d raid1 -m raid1`
-- **Dual-parity (raid6-class)** — zfs `raidz2`, btrfs `-d raid6 -m raid1c3`
+- **Single-parity** — zfs `raidz1`, plus `raidz1-enc` with native encryption
+  on top (community request)
+- **Dual-parity (raid6-class)** — zfs `raidz2` (and `raidz2-enc`,
+  community request), btrfs `-d raid6 -m raid1c3`
   (parity metadata is discouraged — write hole), ext4 on md raid6, and
   bcachefs `--erasure_code --replicas=3` (stable since 1.37; write-hole-free
   by design — writes replicate first, background reconcile stripes them)
