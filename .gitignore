@@ -1,2 +1,3 @@
 results/
 *.img
+__pycache__/
