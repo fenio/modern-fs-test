@@ -14,45 +14,45 @@ AUDIT = ROOT / "scripts" / "audit-results.py"
 SCHEMA = ROOT / "scripts" / "result-schema.json"
 VALIDATOR = ROOT / "scripts" / "validate-result.py"
 
-METRIC_KEYS = [
-    "seqwrite_mbps",
-    "randwrite_iops",
-    "randwrite4_iops",
-    "fsync_p99_ms",
-    "fsync_p999_ms",
-    "randread_iops",
-    "randread4_iops",
-    "seqread_mbps",
-    "lat_idle_p99_ms",
-    "lat_load_p99_ms",
-    "lat_load_max_ms",
-    "lat_load_ops",
-    "smalltree_create_ms",
-    "smalltree_create4_ms",
-    "smalltree_cp_ms",
-    "smalltree_rm_ms",
-    "sparse_create_ms",
-    "sparse_create_bytes",
-    "sparse_grow_ms",
-    "snapshot_create_ms",
-    "snapshot_delete_ms",
-    "reclaim_s",
-    "reclaim_write_mbps",
-    "compress_ratio",
-    "compress_write_mbps",
-    "reflink_ms",
-    "divergence_plain_mbps",
-    "divergence_clone_mbps",
-    "divergence_snap_mbps",
-    "degraded_randwrite_iops",
-    "degraded_randread_iops",
-    "rebuild_s",
-    "scrub_s",
-    "nearfull95_write_mbps",
-    "nearfull99_write_mbps",
-    "snapscale_create_ms",
-    "snapscale_remount_ms",
-    "snapscale_delete_ms",
+METRIC_CONTRACT = [
+    ("seqwrite_mbps", "Sequential write", "MB/s", "higher"),
+    ("randwrite_iops", "Random write, 4k + fsync", "IOPS", "higher"),
+    ("randwrite4_iops", "Random write, 4 threads", "IOPS", "higher"),
+    ("fsync_p99_ms", "fsync p99 latency", "ms", "lower"),
+    ("fsync_p999_ms", "fsync p99.9 latency", "ms", "lower"),
+    ("randread_iops", "Random read, 4k cold cache", "IOPS", "higher"),
+    ("randread4_iops", "Random read, 4 threads", "IOPS", "higher"),
+    ("seqread_mbps", "Sequential read", "MB/s", "higher"),
+    ("lat_idle_p99_ms", "Trivial-op p99, idle", "ms", "lower"),
+    ("lat_load_p99_ms", "Trivial-op p99 under streaming write", "ms", "lower"),
+    ("lat_load_max_ms", "Trivial-op worst case under load", "ms", "lower"),
+    ("lat_load_ops", "Trivial ops completed under load", "ops", "higher"),
+    ("smalltree_create_ms", "Create 20k-file tree", "ms", "lower"),
+    ("smalltree_create4_ms", "Create 20k-file tree, 4 workers", "ms", "lower"),
+    ("smalltree_cp_ms", "cp -r 20k-file tree, cold", "ms", "lower"),
+    ("smalltree_rm_ms", "rm -rf 20k-file tree", "ms", "lower"),
+    ("sparse_create_ms", "ftruncate empty file to 1G", "ms", "lower"),
+    ("sparse_create_bytes", "Bytes allocated for sparse 1G", "B", "lower"),
+    ("sparse_grow_ms", "ftruncate 256M file to 512M", "ms", "lower"),
+    ("snapshot_create_ms", "Snapshot create", "ms", "lower"),
+    ("snapshot_delete_ms", "Snapshot delete (all)", "ms", "lower"),
+    ("reclaim_s", "Space reclaim after delete", "s", "lower"),
+    ("reclaim_write_mbps", "Write during reclaim", "MB/s", "higher"),
+    ("compress_ratio", "zstd compression ratio", "x", "higher"),
+    ("compress_write_mbps", "Compressible-data write", "MB/s", "higher"),
+    ("reflink_ms", "Reflink copy of 2G", "ms", "lower"),
+    ("divergence_plain_mbps", "Overwrite plain file", "MB/s", "higher"),
+    ("divergence_clone_mbps", "Overwrite fresh reflink clone", "MB/s", "higher"),
+    ("divergence_snap_mbps", "Overwrite freshly-snapshotted file", "MB/s", "higher"),
+    ("degraded_randwrite_iops", "Degraded random write", "IOPS", "higher"),
+    ("degraded_randread_iops", "Degraded random read", "IOPS", "higher"),
+    ("rebuild_s", "Rebuild after device loss", "s", "lower"),
+    ("scrub_s", "Scrub after corruption", "s", "lower"),
+    ("nearfull95_write_mbps", "Write near full (95% target)", "MB/s", "higher"),
+    ("nearfull99_write_mbps", "Write near full (99% target)", "MB/s", "higher"),
+    ("snapscale_create_ms", "Snapshot create at 500 snaps", "ms", "lower"),
+    ("snapscale_remount_ms", "Remount with 500 snaps", "ms", "lower"),
+    ("snapscale_delete_ms", "Delete 500 snapshots", "ms", "lower"),
 ]
 
 
@@ -105,13 +105,13 @@ class DashboardRegressionTests(unittest.TestCase):
                 "bcachefs/replicas2",
             ],
         )
-        self.assertEqual([metric["key"] for metric in data["metrics"]], METRIC_KEYS)
-        self.assertEqual(data["metrics"][0], {
-            "key": "seqwrite_mbps",
-            "label": "Sequential write",
-            "unit": "MB/s",
-            "better": "higher",
-        })
+        self.assertEqual(
+            data["metrics"],
+            [
+                {"key": key, "label": label, "unit": unit, "better": better}
+                for key, label, unit, better in METRIC_CONTRACT
+            ],
+        )
         latest = data["latest"]["results"]
         self.assertEqual(latest["ext4/single"]["seqwrite_mbps"], 510.2)
         self.assertEqual(latest["btrfs/raid1"]["aging_mbps"], [42.0, 39.5, 37.0])
@@ -162,8 +162,12 @@ class ResultSchemaTests(unittest.TestCase):
 
         self.assertEqual(schema["schema_version"], 1)
         self.assertEqual(
-            [metric["key"] for metric in metrics if metric["display"] == "card"],
-            METRIC_KEYS,
+            [
+                (metric["key"], metric["label"], metric["unit"], metric["better"])
+                for metric in metrics
+                if metric["display"] == "card"
+            ],
+            METRIC_CONTRACT,
         )
         self.assertEqual(len({metric["key"] for metric in metrics}), len(metrics))
 

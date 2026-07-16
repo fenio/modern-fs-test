@@ -297,46 +297,12 @@ DOCS = {
         [("run-bench.sh (Phase 9)", "scripts/run-bench.sh")]),
 }
 
-METRICS = [
-    ("seqwrite_mbps", "Sequential write", "MB/s", "higher"),
-    ("randwrite_iops", "Random write, 4k + fsync", "IOPS", "higher"),
-    ("randwrite4_iops", "Random write, 4 threads", "IOPS", "higher"),
-    ("fsync_p99_ms", "fsync p99 latency", "ms", "lower"),
-    ("fsync_p999_ms", "fsync p99.9 latency", "ms", "lower"),
-    ("randread_iops", "Random read, 4k cold cache", "IOPS", "higher"),
-    ("randread4_iops", "Random read, 4 threads", "IOPS", "higher"),
-    ("seqread_mbps", "Sequential read", "MB/s", "higher"),
-    ("lat_idle_p99_ms", "Trivial-op p99, idle", "ms", "lower"),
-    ("lat_load_p99_ms", "Trivial-op p99 under streaming write", "ms", "lower"),
-    ("lat_load_max_ms", "Trivial-op worst case under load", "ms", "lower"),
-    ("lat_load_ops", "Trivial ops completed under load", "ops", "higher"),
-    ("smalltree_create_ms", "Create 20k-file tree", "ms", "lower"),
-    ("smalltree_create4_ms", "Create 20k-file tree, 4 workers", "ms", "lower"),
-    ("smalltree_cp_ms", "cp -r 20k-file tree, cold", "ms", "lower"),
-    ("smalltree_rm_ms", "rm -rf 20k-file tree", "ms", "lower"),
-    ("sparse_create_ms", "ftruncate empty file to 1G", "ms", "lower"),
-    ("sparse_create_bytes", "Bytes allocated for sparse 1G", "B", "lower"),
-    ("sparse_grow_ms", "ftruncate 256M file to 512M", "ms", "lower"),
-    ("snapshot_create_ms", "Snapshot create", "ms", "lower"),
-    ("snapshot_delete_ms", "Snapshot delete (all)", "ms", "lower"),
-    ("reclaim_s", "Space reclaim after delete", "s", "lower"),
-    ("reclaim_write_mbps", "Write during reclaim", "MB/s", "higher"),
-    ("compress_ratio", "zstd compression ratio", "x", "higher"),
-    ("compress_write_mbps", "Compressible-data write", "MB/s", "higher"),
-    ("reflink_ms", "Reflink copy of 2G", "ms", "lower"),
-    ("divergence_plain_mbps", "Overwrite plain file", "MB/s", "higher"),
-    ("divergence_clone_mbps", "Overwrite fresh reflink clone", "MB/s", "higher"),
-    ("divergence_snap_mbps", "Overwrite freshly-snapshotted file", "MB/s", "higher"),
-    ("degraded_randwrite_iops", "Degraded random write", "IOPS", "higher"),
-    ("degraded_randread_iops", "Degraded random read", "IOPS", "higher"),
-    ("rebuild_s", "Rebuild after device loss", "s", "lower"),
-    ("scrub_s", "Scrub after corruption", "s", "lower"),
-    ("nearfull95_write_mbps", "Write near full (95% target)", "MB/s", "higher"),
-    ("nearfull99_write_mbps", "Write near full (99% target)", "MB/s", "higher"),
-    ("snapscale_create_ms", "Snapshot create at 500 snaps", "ms", "lower"),
-    ("snapscale_remount_ms", "Remount with 500 snaps", "ms", "lower"),
-    ("snapscale_delete_ms", "Delete 500 snapshots", "ms", "lower"),
-]
+with open(os.path.join(os.path.dirname(__file__), "result-schema.json")) as fh:
+    METRICS = [
+        (metric["key"], metric["label"], metric["unit"], metric["better"])
+        for metric in json.load(fh)["metrics"]
+        if metric["display"] == "card"
+    ]
 
 
 def load_runs(runs_dir):
