@@ -202,6 +202,7 @@ scripts/audit-results.py   anomaly scan over the results history — impossible
                            orderings, self-healing failures, ENOSPC regressions,
                            unexpected nulls (daily via the results-audit workflow)
 scripts/result-schema.json machine-readable result keys, types, and display metadata
+scripts/result_schema.py   shared result schema loading and validation
 scripts/validate-result.py validates result JSON against that contract
 ```
 

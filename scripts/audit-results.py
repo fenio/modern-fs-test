@@ -24,6 +24,8 @@ import os
 import statistics
 import sys
 
+from result_schema import load_schema, validate_document
+
 CHECKSUMMING = {"btrfs", "zfs", "bcachefs"}
 CLASSIC = {"ext4", "xfs"}
 
@@ -79,22 +81,32 @@ def main():
         return 1
 
     history = collections.defaultdict(lambda: collections.defaultdict(list))
-    latest = {}
+    latest_docs = {}
     for rd in run_dirs:
-        for f in glob.glob(os.path.join(rd, "result-*.json")):
-            d = json.load(open(f))
-            ent = d["fs"] + "/" + d["layout"]
-            for k, v in d.get("results", {}).items():
-                history[ent][k].append(v)
-        # latest = last run dir that has results at all
         docs = {}
         for f in glob.glob(os.path.join(rd, "result-*.json")):
-            d = json.load(open(f))
-            docs[d["fs"] + "/" + d["layout"]] = d["results"]
+            with open(f) as fh:
+                d = json.load(fh)
+            ent = f"{d.get('fs', '?')}/{d.get('layout', os.path.basename(f))}"
+            results = d.get("results", {})
+            if isinstance(results, dict):
+                for k, v in results.items():
+                    history[ent][k].append(v)
+            docs[ent] = d
+        # latest = last run dir that has results at all
         if docs:
-            latest = docs
+            latest_docs = docs
 
+    latest = {
+        ent: doc.get("results", {}) if isinstance(doc.get("results"), dict) else {}
+        for ent, doc in latest_docs.items()
+    }
+    schema, metric_schema = load_schema()
     hard, warn = [], []
+
+    for ent, doc in sorted(latest_docs.items()):
+        for error in validate_document(doc, schema, metric_schema):
+            hard.append(f"{ent}: schema {error}")
 
     for ent, res in sorted(latest.items()):
         fs = ent.split("/")[0]

@@ -185,6 +185,56 @@ class AuditRegressionTests(unittest.TestCase):
             result.stdout,
         )
 
+    def test_missing_latest_metric_is_a_hard_anomaly(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runs = Path(tmp) / "runs"
+            shutil.copytree(FIXTURE_RUNS, runs)
+            result_file = runs / "101" / "result-btrfs-raid1.json"
+            document = json.loads(result_file.read_text())
+            del document["results"]["sparse_grow_bytes"]
+            result_file.write_text(json.dumps(document))
+
+            result = run_script(AUDIT, runs)
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(
+            "btrfs/raid1: schema document.results: missing metrics: "
+            "sparse_grow_bytes",
+            result.stdout,
+        )
+
+    def test_wrong_latest_metric_type_is_a_hard_anomaly(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runs = Path(tmp) / "runs"
+            shutil.copytree(FIXTURE_RUNS, runs)
+            result_file = runs / "101" / "result-btrfs-raid1.json"
+            document = json.loads(result_file.read_text())
+            document["results"]["seqwrite_mbps"] = "fast"
+            result_file.write_text(json.dumps(document))
+
+            result = run_script(AUDIT, runs)
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(
+            "btrfs/raid1: schema document.results.seqwrite_mbps: "
+            "expected number, got str",
+            result.stdout,
+        )
+
+    def test_historical_documents_are_not_forced_through_current_schema(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runs = Path(tmp) / "runs"
+            shutil.copytree(FIXTURE_RUNS, runs)
+            result_file = runs / "100" / "result-ext4-single.json"
+            document = json.loads(result_file.read_text())
+            del document["results"]["sparse_grow_bytes"]
+            result_file.write_text(json.dumps(document))
+
+            result = run_script(AUDIT, runs)
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("no anomalies found", result.stdout)
+
 
 class ResultSchemaTests(unittest.TestCase):
     def test_manifest_preserves_dashboard_metric_contract(self):
