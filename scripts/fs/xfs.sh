@@ -20,10 +20,13 @@ fs_setup() {
       mirror "${DEVICES[2]}" "${DEVICES[3]}"
     # 75% of the pool: leaves room for snapshot divergence, and scales
     # down for the ENOSPC phase's small rebuild (a fixed size would hit
-    # pool-exhaustion EIO instead of clean filesystem ENOSPC)
+    # pool-exhaustion EIO instead of clean filesystem ENOSPC). The default
+    # refreservation=volsize makes the first snapshot fail once pre-aging
+    # writes consume the remaining pool headroom.
     local avail
     avail=$(zfs get -Hp -o value available "$ZPOOL")
-    zfs create -V "$(( avail * 3 / 4 ))" -o volblocksize=16k "$ZPOOL/zvol"
+    zfs create -V "$(( avail * 3 / 4 ))" -o volblocksize=16k \
+      -o refreservation=none "$ZPOOL/zvol"
     udevadm settle 2>/dev/null || sleep 2
     mkfs.xfs -fq "/dev/zvol/$ZPOOL/zvol"
     mount -o noatime "/dev/zvol/$ZPOOL/zvol" "$MNT"

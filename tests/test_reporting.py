@@ -14,6 +14,7 @@ AUDIT = ROOT / "scripts" / "audit-results.py"
 SCHEMA = ROOT / "scripts" / "result-schema.json"
 VALIDATOR = ROOT / "scripts" / "validate-result.py"
 RUN_BENCH = ROOT / "scripts" / "run-bench.sh"
+XFS_BACKEND = ROOT / "scripts" / "fs" / "xfs.sh"
 
 METRIC_CONTRACT = [
     ("seqwrite_mbps", "Sequential write", "MB/s", "higher"),
@@ -304,6 +305,13 @@ class ResultSchemaTests(unittest.TestCase):
 
         self.assertLess(write_result, validate_result)
         self.assertLess(validate_result, report_success)
+
+
+class BackendConfigurationTests(unittest.TestCase):
+    def test_xfs_zvol_does_not_reserve_space_needed_by_snapshots(self):
+        source = XFS_BACKEND.read_text()
+
+        self.assertIn("-o refreservation=none", source)
 
 
 if __name__ == "__main__":
