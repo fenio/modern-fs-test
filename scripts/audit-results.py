@@ -57,13 +57,15 @@ def null_ok(entity, key):
     if fs in CLASSIC:
         if key.startswith(("compress_", "snapscale")):
             return True
-        if key in ("reflink_ms", "divergence_clone_mbps") and fs == "ext4":
+        if key in ("reflink_ms", "reflink_fiemap_shared",
+                   "divergence_clone_mbps") and fs == "ext4":
             return True
         if not lvm and key in ("snapshot_create_ms", "snapshot_delete_ms",
                                "reclaim_s", "reclaim_write_mbps",
                                "divergence_snap_mbps"):
             return True
-    if fs == "zfs" and key in ("reflink_ms", "divergence_clone_mbps"):
+    if fs == "zfs" and key in ("reflink_ms", "reflink_fiemap_shared",
+                               "divergence_clone_mbps"):
         return True  # block cloning off by default
     return False
 

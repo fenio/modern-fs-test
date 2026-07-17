@@ -154,6 +154,36 @@ class AuditRegressionTests(unittest.TestCase):
             result.stdout,
         )
 
+    def test_fiemap_null_is_expected_without_reflink_support(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runs = Path(tmp) / "runs"
+            shutil.copytree(FIXTURE_RUNS, runs)
+            for name in ("result-ext4-single.json", "result-zfs-mirror.json"):
+                shutil.copy2(runs / "100" / name, runs / "101" / name)
+
+            result = run_script(AUDIT, runs)
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("audited 2 runs, 5 entities in latest", result.stdout)
+        self.assertIn("no anomalies found", result.stdout)
+
+    def test_fiemap_null_is_rejected_with_reflink_support(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runs = Path(tmp) / "runs"
+            shutil.copytree(FIXTURE_RUNS, runs)
+            result_file = runs / "101" / "result-xfs-zvol.json"
+            document = json.loads(result_file.read_text())
+            document["results"]["reflink_fiemap_shared"] = None
+            result_file.write_text(json.dumps(document))
+
+            result = run_script(AUDIT, runs)
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(
+            "xfs/zvol.reflink_fiemap_shared: unexpectedly null",
+            result.stdout,
+        )
+
 
 class ResultSchemaTests(unittest.TestCase):
     def test_manifest_preserves_dashboard_metric_contract(self):
