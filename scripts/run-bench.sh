@@ -590,6 +590,7 @@ else
   SNAP_AVG=null
 fi
 
+RESULT_FILE="$RESULTS_DIR/result-$BENCH_ID.json"
 jq -n \
   --arg fs "$FS" \
   --arg layout "$LAYOUT" \
@@ -706,8 +707,9 @@ jq -n \
               scrub_found: $scrub_found,
               scrub_repaired: $scrub_repaired,
               data_intact: $data_intact}}' \
-  > "$RESULTS_DIR/result-$BENCH_ID.json"
+  > "$RESULT_FILE"
 
+python3 "$SCRIPT_DIR/validate-result.py" "$RESULT_FILE"
 chmod -R a+rX "$RESULTS_DIR"
-log "done: $RESULTS_DIR/result-$BENCH_ID.json"
-jq . "$RESULTS_DIR/result-$BENCH_ID.json" >&2
+log "done: $RESULT_FILE"
+jq . "$RESULT_FILE" >&2

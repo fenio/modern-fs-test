@@ -13,6 +13,7 @@ DASHBOARD = ROOT / "scripts" / "make-dashboard.py"
 AUDIT = ROOT / "scripts" / "audit-results.py"
 SCHEMA = ROOT / "scripts" / "result-schema.json"
 VALIDATOR = ROOT / "scripts" / "validate-result.py"
+RUN_BENCH = ROOT / "scripts" / "run-bench.sh"
 
 METRIC_CONTRACT = [
     ("seqwrite_mbps", "Sequential write", "MB/s", "higher"),
@@ -241,6 +242,18 @@ class ResultSchemaTests(unittest.TestCase):
             "document.results: missing metrics: sparse_grow_bytes",
             result.stderr,
         )
+
+    def test_benchmark_validates_result_before_reporting_success(self):
+        source = RUN_BENCH.read_text()
+
+        write_result = source.index('> "$RESULT_FILE"')
+        validate_result = source.index(
+            'python3 "$SCRIPT_DIR/validate-result.py" "$RESULT_FILE"'
+        )
+        report_success = source.index('log "done: $RESULT_FILE"')
+
+        self.assertLess(write_result, validate_result)
+        self.assertLess(validate_result, report_success)
 
 
 if __name__ == "__main__":
