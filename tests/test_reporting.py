@@ -274,13 +274,32 @@ class AuditRegressionTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("no anomalies found", result.stdout)
 
+    def test_reclaim_timeout_reports_restored_space(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runs = Path(tmp) / "runs"
+            shutil.copytree(FIXTURE_RUNS, runs)
+            result_file = runs / "101" / "result-btrfs-raid1.json"
+            document = json.loads(result_file.read_text())
+            document["results"]["reclaim_s"] = None
+            document["results"]["reclaim_free_pct"] = 82.4
+            result_file.write_text(json.dumps(document))
+
+            result = run_audit(runs)
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn(
+            "btrfs/raid1: reclaim did not finish within 300s; "
+            "82.4% restored, target 85%",
+            result.stdout,
+        )
+
 
 class ResultSchemaTests(unittest.TestCase):
     def test_manifest_preserves_dashboard_metric_contract(self):
         schema = json.loads(SCHEMA.read_text())
         metrics = schema["metrics"]
 
-        self.assertEqual(schema["schema_version"], 1)
+        self.assertEqual(schema["schema_version"], 2)
         self.assertEqual(
             [
                 (metric["key"], metric["label"], metric["unit"], metric["better"])
@@ -337,6 +356,31 @@ class ResultSchemaTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("validated 5 result file(s)", result.stdout)
+
+    def test_unversioned_results_use_v1_contract(self):
+        result = run_script(
+            VALIDATOR,
+            FIXTURE_RUNS / "100" / "result-ext4-single.json",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_schema_v2_requires_reclaim_telemetry(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            result_file = Path(tmp) / "result.json"
+            document = json.loads(
+                (FIXTURE_RUNS / "101" / "result-btrfs-raid1.json").read_text()
+            )
+            del document["results"]["reclaim_free_pct"]
+            result_file.write_text(json.dumps(document))
+
+            result = run_script(VALIDATOR, result_file)
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(
+            "document.results: missing metrics: reclaim_free_pct",
+            result.stderr,
+        )
 
     def test_wrong_metric_type_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:

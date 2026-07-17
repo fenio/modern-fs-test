@@ -278,6 +278,7 @@ done
 SNAP_DELETE_MS=null
 RECLAIM_S=null
 RECLAIM_WRITE_MBPS=null
+RECLAIM_FREE_PCT=null
 if [ "$SNAPSHOTS_OK" = 1 ] && [ "${#SNAP_MS[@]}" -gt 0 ]; then
   log "phase: delete $AGING_ITERS snapshots + reclaim"
   t0=$(now_ms)
@@ -290,15 +291,19 @@ if [ "$SNAPSHOTS_OK" = 1 ] && [ "${#SNAP_MS[@]}" -gt 0 ]; then
     # generations, metadata growth) — 90% missed by <1% in testing
     target=$(( FREE_BEFORE_AGING * 85 / 100 ))
     for i in $(seq 1 300); do
-      if [ "$(fs_free_bytes)" -ge "$target" ]; then
+      reclaim_free=$(fs_free_bytes)
+      if [ "$reclaim_free" -ge "$target" ]; then
         RECLAIM_S=$(( ($(now_ms) - t0) / 1000 ))
         break
       fi
       sleep 1
     done
+    reclaim_free=$(fs_free_bytes)
+    RECLAIM_FREE_PCT=$(jq -n --argjson free "$reclaim_free" \
+      --argjson before "$FREE_BEFORE_AGING" '$free * 100 / $before')
     [ "$RECLAIM_S" = null ] \
-      && log "space not back within 300s (free: $(( $(fs_free_bytes) / 1048576 ))M, target: $(( target / 1048576 ))M)"
-    log "snapshot delete: ${SNAP_DELETE_MS}ms, reclaim: ${RECLAIM_S}s"
+      && log "space not back within 300s (free: $(( reclaim_free / 1048576 ))M, target: $(( target / 1048576 ))M)"
+    log "snapshot delete: ${SNAP_DELETE_MS}ms, reclaim: ${RECLAIM_S}s (${RECLAIM_FREE_PCT}% restored)"
   else
     log "snapshot delete unsupported on $FS ($LAYOUT)"
   fi
@@ -620,6 +625,7 @@ jq -n \
   --argjson snapshot_delete_ms "$SNAP_DELETE_MS" \
   --argjson reclaim_s "$RECLAIM_S" \
   --argjson reclaim_write_mbps "$RECLAIM_WRITE_MBPS" \
+  --argjson reclaim_free_pct "$RECLAIM_FREE_PCT" \
   --argjson compress_ratio "$COMP_RATIO" \
   --argjson compress_write_mbps "$COMP_MBPS" \
   --argjson sparse_create_ms "$SPARSE_CREATE_MS" \
@@ -652,7 +658,8 @@ jq -n \
   --argjson data_intact "$DATA_INTACT" \
   --argjson calib_seqwrite_mbps "$CALIB_SEQ_MBPS" \
   --argjson calib_randwrite_iops "$CALIB_RAND_IOPS" \
-  '{fs: $fs, layout: $layout, kernel: $kernel, version: $version, date: $date,
+  '{schema_version: 2,
+    fs: $fs, layout: $layout, kernel: $kernel, version: $version, date: $date,
     devices: $devices, ndev: $ndev,
     calibration: {seqwrite_mbps: $calib_seqwrite_mbps,
                   randwrite_iops: $calib_randwrite_iops},
@@ -677,6 +684,7 @@ jq -n \
               snapshot_delete_ms: $snapshot_delete_ms,
               reclaim_s: $reclaim_s,
               reclaim_write_mbps: $reclaim_write_mbps,
+              reclaim_free_pct: $reclaim_free_pct,
               compress_ratio: $compress_ratio,
               compress_write_mbps: $compress_write_mbps,
               sparse_create_ms: $sparse_create_ms,

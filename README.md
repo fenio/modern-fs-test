@@ -206,6 +206,9 @@ scripts/result_schema.py   shared result schema loading and validation
 scripts/validate-result.py validates result JSON against that contract
 ```
 
+Result documents carry `schema_version`; historical unversioned documents are
+treated as version 1 so new metrics do not invalidate the stored history.
+
 Adding a filesystem = one file in `scripts/fs/` implementing `fs_setup`,
 `fs_snapshot`, and `fs_teardown`; everything else (`fs_setup_compression`,
 `fs_compress_ratio`, `fs_snapshot_delete_all`, `fs_remount`, `fs_snap_list`,

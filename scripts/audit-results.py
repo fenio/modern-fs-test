@@ -142,7 +142,12 @@ def main():
                         and res["lat_load_ops"] < 20:
                     continue  # withheld by design below the 20-sample floor
                 if k == "reclaim_s":
-                    warn.append(f"{ent}: reclaim did not finish within 300s")
+                    pct = res.get("reclaim_free_pct")
+                    restored = (
+                        f"; {pct:.1f}% restored, target 85%"
+                        if isinstance(pct, (int, float)) else ""
+                    )
+                    warn.append(f"{ent}: reclaim did not finish within 300s{restored}")
                 else:
                     hard.append(f"{ent}.{k}: unexpectedly null")
 

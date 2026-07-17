@@ -1,4 +1,5 @@
 {
+  "schema_version": 2,
   "fs": "xfs",
   "layout": "zvol",
   "kernel": "6.18.0-fixture",
@@ -29,6 +30,7 @@
     "snapshot_delete_ms": 150.0,
     "reclaim_s": 4,
     "reclaim_write_mbps": 31.0,
+    "reclaim_free_pct": 92.0,
     "compress_ratio": 3.5,
     "compress_write_mbps": 570.0,
     "sparse_create_ms": 0.4,

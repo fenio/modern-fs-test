@@ -1,6 +1,7 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "document": {
+    "schema_version": {"type": "integer", "nonnegative": true, "required": false},
     "fs": {"type": "string", "nonempty": true},
     "layout": {"type": "string", "nonempty": true},
     "kernel": {"type": "string", "nonempty": true},
@@ -69,6 +70,7 @@
     {"key": "snapshot_delete_ms", "type": "number", "label": "Snapshot delete (all)", "unit": "ms", "better": "lower", "display": "card", "capability": "snapshots", "nullable": true, "nonnegative": true},
     {"key": "reclaim_s", "type": "number", "label": "Space reclaim after delete", "unit": "s", "better": "lower", "display": "card", "capability": "snapshots", "nullable": true, "nonnegative": true},
     {"key": "reclaim_write_mbps", "type": "number", "label": "Write during reclaim", "unit": "MB/s", "better": "higher", "display": "card", "capability": "snapshots", "nullable": true, "nonnegative": true},
+    {"key": "reclaim_free_pct", "type": "number", "label": "Free space restored after reclaim", "unit": "%", "display": "table", "capability": "snapshots", "nullable": true, "nonnegative": true, "introduced": 2},
     {"key": "compress_ratio", "type": "number", "label": "zstd compression ratio", "unit": "x", "better": "higher", "display": "card", "capability": "compression", "nullable": true, "nonnegative": true},
     {"key": "compress_write_mbps", "type": "number", "label": "Compressible-data write", "unit": "MB/s", "better": "higher", "display": "card", "capability": "compression", "nullable": true, "nonnegative": true},
     {"key": "reflink_ms", "type": "number", "label": "Reflink copy of 2G", "unit": "ms", "better": "lower", "display": "card", "capability": "reflink", "nullable": true, "nonnegative": true},

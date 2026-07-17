@@ -74,7 +74,11 @@ def validate_document(document, schema, metrics):
 
     errors = []
     envelope = schema.get("document", {})
-    missing = sorted(set(envelope) - set(document))
+    required = {
+        key for key, spec in envelope.items()
+        if spec.get("required", True)
+    }
+    missing = sorted(required - set(document))
     if missing:
         errors.append(f"document: missing keys: {', '.join(missing)}")
 
@@ -85,7 +89,17 @@ def validate_document(document, schema, metrics):
             if not isinstance(results, dict):
                 errors.append(f"document.{key}: expected object, got {type(results).__name__}")
                 continue
-            missing_metrics = sorted(set(metrics) - set(results))
+            raw_version = document.get("schema_version", 1)
+            version = (
+                raw_version
+                if isinstance(raw_version, int) and not isinstance(raw_version, bool)
+                else 1
+            )
+            active_metrics = {
+                metric for metric, metric_spec in metrics.items()
+                if metric_spec.get("introduced", 1) <= version
+            }
+            missing_metrics = sorted(active_metrics - set(results))
             extra_metrics = sorted(set(results) - set(metrics))
             if missing_metrics:
                 errors.append(
