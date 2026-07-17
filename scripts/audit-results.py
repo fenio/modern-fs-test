@@ -17,6 +17,7 @@ overlap dependent), and the by-design null matrix (singles skip degraded,
 classic fs skip compression, and so on).
 """
 
+import argparse
 import collections
 import glob
 import json
@@ -27,7 +28,6 @@ import sys
 from result_schema import load_schema, validate_document
 
 CHECKSUMMING = {"btrfs", "zfs", "bcachefs"}
-CLASSIC = {"ext4", "xfs"}
 
 # Metrics whose large run-to-run variance is expected and documented.
 NOISY = {
@@ -42,38 +42,28 @@ NOISY = {
 }
 
 
-def null_ok(entity, key):
-    """Is a null value for this entity/metric by design?"""
-    fs, layout = entity.split("/", 1)
-    single = layout == "single"
-    lvm = "lvm" in layout
-    if key in ("calibration", "version"):
-        return True
-    if single and (key.startswith(("degraded_", "scrub_", "nearfull", "enospc_"))
-                   or key in ("rebuild_s", "data_intact")):
-        return True
-    if entity == "btrfs/raid1-luks" and (key.startswith("degraded_") or key == "rebuild_s"):
-        return True  # loop-detach can't fail a dm-crypt mapper (roadmap)
-    if fs == "bcachefs" and key in ("scrub_found", "scrub_repaired"):
-        return True  # 1.38 tools don't expose counts; md5 verdict authoritative
-    if fs in CLASSIC:
-        if key.startswith(("compress_", "snapscale")):
-            return True
-        if key in ("reflink_ms", "reflink_fiemap_shared",
-                   "divergence_clone_mbps") and fs == "ext4":
-            return True
-        if not lvm and key in ("snapshot_create_ms", "snapshot_delete_ms",
-                               "reclaim_s", "reclaim_write_mbps",
-                               "divergence_snap_mbps"):
-            return True
-    if fs == "zfs" and key in ("reflink_ms", "reflink_fiemap_shared",
-                               "divergence_clone_mbps"):
-        return True  # block cloning off by default
-    return False
+def capabilities_for(entity, document, configurations):
+    capabilities = set(configurations.get(entity, []))
+    if document.get("devices") != "loop":
+        # Real-hardware runs skip the destructive small-array ENOSPC phase
+        # and may not have the spare device required for rebuild testing.
+        capabilities.difference_update(("enospc", "degraded"))
+    return capabilities
+
+
+def null_ok(key, capabilities, metrics):
+    """Is a null value for this metric unsupported by this configuration?"""
+    capability = metrics.get(key, {}).get("capability")
+    return capability is not None and capability not in capabilities
 
 
 def main():
-    runs_dir = sys.argv[1] if len(sys.argv) > 1 else "data/runs"
+    parser = argparse.ArgumentParser()
+    parser.add_argument("runs_dir", nargs="?", default="data/runs")
+    parser.add_argument("--allow-partial", action="store_true",
+                        help="do not require every configured matrix entity")
+    args = parser.parse_args()
+    runs_dir = args.runs_dir
     run_dirs = sorted(glob.glob(os.path.join(runs_dir, "*")),
                       key=lambda p: int(os.path.basename(p)))
     if not run_dirs:
@@ -102,7 +92,13 @@ def main():
         for ent, doc in latest_docs.items()
     }
     schema, metric_schema = load_schema()
+    configurations = schema.get("configurations", {})
     hard, warn = [], []
+
+    if not args.allow_partial:
+        missing = sorted(set(configurations) - set(latest_docs))
+        if missing:
+            hard.append(f"latest run missing configurations: {', '.join(missing)}")
 
     for ent, doc in sorted(latest_docs.items()):
         for error in validate_document(doc, schema, metric_schema):
@@ -110,6 +106,7 @@ def main():
 
     for ent, res in sorted(latest.items()):
         fs = ent.split("/")[0]
+        capabilities = capabilities_for(ent, latest_docs[ent], configurations)
 
         def num(k):
             v = res.get(k)
@@ -140,7 +137,7 @@ def main():
         # unexpected nulls (reclaim_s null = cleaner exceeded its 300s
         # window — a legitimate outcome, warn instead of fail)
         for k, v in res.items():
-            if v is None and not null_ok(ent, k):
+            if v is None and not null_ok(k, capabilities, metric_schema):
                 if k == "lat_load_p99_ms" and isinstance(res.get("lat_load_ops"), (int, float)) \
                         and res["lat_load_ops"] < 20:
                     continue  # withheld by design below the 20-sample floor
