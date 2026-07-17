@@ -1,4 +1,5 @@
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -15,6 +16,7 @@ SCHEMA = ROOT / "scripts" / "result-schema.json"
 VALIDATOR = ROOT / "scripts" / "validate-result.py"
 RUN_BENCH = ROOT / "scripts" / "run-bench.sh"
 XFS_BACKEND = ROOT / "scripts" / "fs" / "xfs.sh"
+BENCH_WORKFLOW = ROOT / ".github" / "workflows" / "bench.yml"
 
 METRIC_CONTRACT = [
     ("seqwrite_mbps", "Sequential write", "MB/s", "higher"),
@@ -66,6 +68,10 @@ def run_script(script, *args):
         capture_output=True,
         text=True,
     )
+
+
+def run_audit(runs):
+    return run_script(AUDIT, "--allow-partial", runs)
 
 
 def dashboard_data(html):
@@ -132,7 +138,7 @@ class DashboardRegressionTests(unittest.TestCase):
 
 class AuditRegressionTests(unittest.TestCase):
     def test_representative_history_has_no_anomalies(self):
-        result = run_script(AUDIT, FIXTURE_RUNS)
+        result = run_audit(FIXTURE_RUNS)
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("audited 2 runs, 3 entities in latest", result.stdout)
@@ -147,7 +153,7 @@ class AuditRegressionTests(unittest.TestCase):
             document["results"]["data_intact"] = False
             result_file.write_text(json.dumps(document))
 
-            result = run_script(AUDIT, runs)
+            result = run_audit(runs)
 
         self.assertEqual(result.returncode, 1)
         self.assertIn("## HARD anomalies", result.stdout)
@@ -163,7 +169,7 @@ class AuditRegressionTests(unittest.TestCase):
             for name in ("result-ext4-single.json", "result-zfs-mirror.json"):
                 shutil.copy2(runs / "100" / name, runs / "101" / name)
 
-            result = run_script(AUDIT, runs)
+            result = run_audit(runs)
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("audited 2 runs, 5 entities in latest", result.stdout)
@@ -178,7 +184,7 @@ class AuditRegressionTests(unittest.TestCase):
             document["results"]["reflink_fiemap_shared"] = None
             result_file.write_text(json.dumps(document))
 
-            result = run_script(AUDIT, runs)
+            result = run_audit(runs)
 
         self.assertEqual(result.returncode, 1)
         self.assertIn(
@@ -195,7 +201,7 @@ class AuditRegressionTests(unittest.TestCase):
             del document["results"]["sparse_grow_bytes"]
             result_file.write_text(json.dumps(document))
 
-            result = run_script(AUDIT, runs)
+            result = run_audit(runs)
 
         self.assertEqual(result.returncode, 1)
         self.assertIn(
@@ -213,7 +219,7 @@ class AuditRegressionTests(unittest.TestCase):
             document["results"]["seqwrite_mbps"] = "fast"
             result_file.write_text(json.dumps(document))
 
-            result = run_script(AUDIT, runs)
+            result = run_audit(runs)
 
         self.assertEqual(result.returncode, 1)
         self.assertIn(
@@ -231,7 +237,39 @@ class AuditRegressionTests(unittest.TestCase):
             del document["results"]["sparse_grow_bytes"]
             result_file.write_text(json.dumps(document))
 
-            result = run_script(AUDIT, runs)
+            result = run_audit(runs)
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("no anomalies found", result.stdout)
+
+    def test_incomplete_latest_matrix_is_a_hard_anomaly(self):
+        result = run_script(AUDIT, FIXTURE_RUNS)
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("latest run missing configurations:", result.stdout)
+
+    def test_real_hardware_allows_skipped_enospc_and_degraded_phases(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runs = Path(tmp) / "runs"
+            shutil.copytree(FIXTURE_RUNS, runs)
+            result_file = runs / "101" / "result-btrfs-raid1.json"
+            document = json.loads(result_file.read_text())
+            document["devices"] = "/dev/sdb /dev/sdc /dev/sdd /dev/sde"
+            for key in (
+                "degraded_randwrite_iops",
+                "degraded_randread_iops",
+                "rebuild_s",
+                "nearfull95_write_mbps",
+                "nearfull99_write_mbps",
+                "nearfull95_pct",
+                "nearfull99_pct",
+                "enospc_delete_ok",
+                "enospc_recover_ok",
+            ):
+                document["results"][key] = None
+            result_file.write_text(json.dumps(document))
+
+            result = run_audit(runs)
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("no anomalies found", result.stdout)
@@ -252,6 +290,46 @@ class ResultSchemaTests(unittest.TestCase):
             METRIC_CONTRACT,
         )
         self.assertEqual(len({metric["key"] for metric in metrics}), len(metrics))
+
+    def test_configurations_match_benchmark_matrix(self):
+        schema = json.loads(SCHEMA.read_text())
+        matrix = re.findall(
+            r"^\s+- fs: (\S+)\n\s+layout: (\S+)",
+            BENCH_WORKFLOW.read_text(),
+            re.MULTILINE,
+        )
+
+        self.assertEqual(
+            list(schema["configurations"]),
+            [f"{fs}/{layout}" for fs, layout in matrix],
+        )
+
+    def test_nullable_metrics_declare_capability_or_special_handling(self):
+        schema = json.loads(SCHEMA.read_text())
+        unscoped = [
+            metric["key"]
+            for metric in schema["metrics"]
+            if metric.get("nullable") and "capability" not in metric
+        ]
+
+        self.assertEqual(unscoped, ["lat_load_p99_ms", "lat_load_max_ms"])
+
+    def test_configuration_capabilities_are_known_and_unique(self):
+        schema = json.loads(SCHEMA.read_text())
+        metric_capabilities = {
+            metric["capability"]
+            for metric in schema["metrics"]
+            if "capability" in metric
+        }
+        configured_capabilities = {
+            capability
+            for capabilities in schema["configurations"].values()
+            for capability in capabilities
+        }
+
+        self.assertEqual(configured_capabilities, metric_capabilities)
+        for capabilities in schema["configurations"].values():
+            self.assertEqual(len(capabilities), len(set(capabilities)))
 
     def test_all_representative_results_validate(self):
         fixtures = sorted(FIXTURE_RUNS.glob("*/*.json"))
