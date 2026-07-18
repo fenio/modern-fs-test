@@ -88,6 +88,10 @@ authoritative list is the matrix in `.github/workflows/bench.yml`):
 - **bcachefs** — `--replicas=2` (kernel module built via DKMS from
   [apt.bcachefs.org](https://apt.bcachefs.org/) since bcachefs left mainline in 6.17)
 
+  If you want to try bcachefs as a working storage system rather than just
+  benchmark it, [NASty](https://github.com/nasty-project/nasty) is a NixOS-based
+  NAS appliance built around it and a practical place to start.
+
 ## The point is data integrity, not the winner's podium
 
 Benchmark charts invite "which is fastest". For long-term storage that is

@@ -108,7 +108,8 @@ class DashboardRegressionTests(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("wrote", result.stdout)
-            data = dashboard_data(output.read_text())
+            html = output.read_text()
+            data = dashboard_data(html)
 
         self.assertEqual(data["latest"]["date"], "2026-07-16T10:02:00Z")
         self.assertEqual(data["latest"]["kernel"], "6.18.0-fixture")
@@ -145,6 +146,7 @@ class DashboardRegressionTests(unittest.TestCase):
             "tools 1.38.1 / module 1.38.1",
         )
         self.assertEqual(data["repo"], "https://example.test/fsbench")
+        self.assertIn('href="https://github.com/nasty-project/nasty"', html)
 
     def test_dashboard_distinguishes_runs_from_compacted_trend_points(self):
         with tempfile.TemporaryDirectory() as tmp:
