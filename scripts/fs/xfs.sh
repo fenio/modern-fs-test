@@ -3,8 +3,10 @@
 # Unlike ext4, XFS has reflink (on by default in mkfs.xfs), so it joins the
 # CoW filesystems in that column. Snapshots come from LVM in the lvm layout.
 
+# shellcheck source=../lib/layered.sh
 source "$SCRIPT_DIR/lib/layered.sh"
 
+# shellcheck disable=SC2034  # consumed by run-bench.sh
 FS_REFLINK=1
 
 ZPOOL=fsbench
@@ -38,6 +40,7 @@ fs_setup() {
   mkfs.xfs -fq "$LAYERED_DEV"
   mount -o noatime "$LAYERED_DEV" "$MNT"
   mkdir -p "$MNT/data"
+  # shellcheck disable=SC2034  # consumed by run-bench.sh
   DATA="$MNT/data"
 }
 

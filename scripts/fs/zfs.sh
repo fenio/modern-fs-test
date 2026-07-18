@@ -2,6 +2,7 @@
 # ZFS backend. Layout "mirror": striped mirror pairs (raid10-like) —
 # devices are paired in order, so pass an even number of devices.
 
+# shellcheck disable=SC2034  # consumed by run-bench.sh
 FS_REFLINK=0  # block cloning exists in 2.2+ but is off by default; revisit
 POOL=fsbench
 
@@ -45,6 +46,7 @@ fs_setup() {
   zpool create -f -O mountpoint="$MNT" -O compression=off -O atime=off \
     "${extra[@]}" "$POOL" "${vdevs[@]}"
   zfs create "$POOL/data"
+  # shellcheck disable=SC2034  # consumed by run-bench.sh
   DATA="$MNT/data"
 }
 

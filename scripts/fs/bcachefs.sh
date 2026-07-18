@@ -3,6 +3,7 @@
 # The kernel module ships as DKMS (see install-deps.sh) since bcachefs
 # left mainline in 6.17.
 
+# shellcheck disable=SC2034  # consumed by run-bench.sh
 FS_REFLINK=1
 
 fs_setup() {
