@@ -102,6 +102,7 @@ class DashboardRegressionTests(unittest.TestCase):
 
         self.assertEqual(data["latest"]["date"], "2026-07-16T10:02:00Z")
         self.assertEqual(data["latest"]["kernel"], "6.18.0-fixture")
+        self.assertEqual(data["runCount"], 2)
         self.assertEqual(data["stale"], ["ext4/single", "zfs/mirror"])
         self.assertEqual(
             [entity["id"] for entity in data["entities"]],
@@ -134,6 +135,31 @@ class DashboardRegressionTests(unittest.TestCase):
             "tools 1.38.1 / module 1.38.1",
         )
         self.assertEqual(data["repo"], "https://example.test/fsbench")
+
+    def test_dashboard_distinguishes_runs_from_compacted_trend_points(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            runs = tmp / "runs"
+            shutil.copytree(FIXTURE_RUNS / "100", runs / "100")
+            shutil.copytree(FIXTURE_RUNS / "100", runs / "101")
+            shutil.copytree(FIXTURE_RUNS / "101", runs / "102")
+            output = tmp / "index.html"
+
+            result = run_script(
+                DASHBOARD,
+                "--runs",
+                runs,
+                "--out",
+                output,
+                "--window",
+                1,
+            )
+            data = dashboard_data(output.read_text())
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(data["runCount"], 3)
+        self.assertEqual(len(data["runs"]), 2)
+        self.assertTrue(data["runs"][0]["agg"])
 
 
 class AuditRegressionTests(unittest.TestCase):

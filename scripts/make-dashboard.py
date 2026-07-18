@@ -397,7 +397,9 @@ def main():
                     help="newest runs kept raw; older collapsed to daily medians")
     args = ap.parse_args()
 
-    runs = collapse_old(load_runs(args.runs), args.window)
+    raw_runs = load_runs(args.runs)
+    run_count = len(raw_runs)
+    runs = collapse_old(raw_runs, args.window)
     if not runs:
         print(f"no result JSON found under {args.runs}", file=sys.stderr)
         sys.exit(1)
@@ -429,6 +431,7 @@ def main():
             for k, l, u, b in METRICS
         ],
         "runs": runs,
+        "runCount": run_count,
         "repo": args.repo,
         "docs": {k: {"text": t, "src": [{"label": l, "url": SRC + p} for l, p in s]}
                  for k, (t, s) in DOCS.items()},
@@ -900,10 +903,12 @@ function buildTable(view) {
 // ---- filters + page assembly --------------------------------------------------
 const app = document.getElementById("app");
 const dt = (latest.date || "").replace("T", " ").replace("Z", " UTC");
+const runSummary = `${DATA.runCount} run${DATA.runCount === 1 ? "" : "s"} recorded` +
+  (DATA.runCount === DATA.runs.length ? "" : ` · ${DATA.runs.length} trend points shown`);
 app.appendChild(el("h1", {}, "modern-fs-benchmark"));
 app.appendChild(el("p", {class: "sub"},
   `Multi-device CoW filesystems under workloads classic benchmarks skip —
-   latest run ${dt}, kernel ${latest.kernel}, ${DATA.runs.length} run(s) recorded
+   latest run ${dt}, kernel ${latest.kernel}, ${runSummary}
    · <a href="${DATA.repo}">repository</a>`));
 app.appendChild(el("p", {class: "note"},
   "CI runs use loop devices on shared ephemeral VMs (one VM per filesystem): compare shapes and ratios, not absolute MB/s. Each job records a host-calibration anchor — see the table."));
