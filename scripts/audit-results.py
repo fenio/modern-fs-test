@@ -57,6 +57,11 @@ def null_ok(key, capabilities, metrics):
     return capability is not None and capability not in capabilities
 
 
+def reclaim_target_pct(document):
+    version = document.get("schema_version", 1)
+    return 80 if isinstance(version, int) and version >= 3 else 85
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("runs_dir", nargs="?", default="data/runs")
@@ -143,8 +148,9 @@ def main():
                     continue  # withheld by design below the 20-sample floor
                 if k == "reclaim_s":
                     pct = res.get("reclaim_free_pct")
+                    target = reclaim_target_pct(latest_docs[ent])
                     restored = (
-                        f"; {pct:.1f}% restored, target 85%"
+                        f"; {pct:.1f}% restored, target {target}%"
                         if isinstance(pct, (int, float)) else ""
                     )
                     warn.append(f"{ent}: reclaim did not finish within 300s{restored}")
