@@ -74,6 +74,16 @@ def run_audit(runs):
     return run_script(AUDIT, "--allow-partial", runs)
 
 
+def run_benchmark_shell(source, *args):
+    return subprocess.run(
+        ["bash", "-c", f'source "$1"\n{source}', "bash", str(RUN_BENCH), *args],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+
 def dashboard_data(html):
     prefix = "const DATA = "
     suffix = ";\nconst SLOTS = "
@@ -473,6 +483,82 @@ class ResultSchemaTests(unittest.TestCase):
 
         self.assertLess(write_result, validate_result)
         self.assertLess(validate_result, report_success)
+
+
+class BenchmarkPhaseTests(unittest.TestCase):
+    phases = [
+        "phase_host_calibration",
+        "setup_benchmark_filesystem",
+        "phase_sequential_write",
+        "phase_random_write",
+        "phase_random_read",
+        "phase_sequential_read",
+        "phase_trivial_latency",
+        "phase_source_tree",
+        "phase_sparse_files",
+        "phase_aging",
+        "phase_snapshot_reclaim",
+        "phase_snapshot_scaling",
+        "phase_compression",
+        "phase_divergence",
+        "phase_degraded_rebuild",
+        "phase_corruption_scrub",
+        "phase_enospc",
+        "write_result",
+    ]
+
+    def test_phases_run_in_destructive_order(self):
+        stubs = "\n".join(
+            f"{phase}() {{ printf '%s\\n' {phase}; }}" for phase in self.phases
+        )
+
+        result = run_benchmark_shell(f"{stubs}\nrun_benchmark_phases")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.splitlines(), self.phases)
+
+    def test_sequential_write_phase_can_run_with_stubs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = r'''
+DATA=$2
+SEQ_SIZE=2G
+log() { :; }
+fio_json() {
+  printf '%s\n' "$*" > "$DATA/fio-call"
+  printf '%s\n' "$DATA/fio.json"
+}
+jq() { printf '321.5\n'; }
+phase_sequential_write
+printf '%s\n' "$SEQWRITE_MBPS"
+'''
+            result = run_benchmark_shell(source, tmp)
+            fio_call = (Path(tmp) / "fio-call").read_text().strip()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "321.5")
+        self.assertEqual(
+            fio_call,
+            f"seqwrite --directory={tmp} --rw=write --bs=1M "
+            "--size=2G --end_fsync=1",
+        )
+
+    def test_skipped_degraded_phase_resets_optional_metrics(self):
+        source = r'''
+FS=ext4
+LAYOUT=single
+SPARE_DEV=
+DEG_WRITE_IOPS=1
+DEG_READ_IOPS=2
+REBUILD_S=3
+log() { :; }
+phase_degraded_rebuild
+printf '%s %s %s\n' "$DEG_WRITE_IOPS" "$DEG_READ_IOPS" "$REBUILD_S"
+'''
+
+        result = run_benchmark_shell(source)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "null null null")
 
 
 class BackendConfigurationTests(unittest.TestCase):

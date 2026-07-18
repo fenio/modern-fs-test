@@ -13,37 +13,37 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=lib/common.sh
 source "$SCRIPT_DIR/lib/common.sh"
 
-FS=${1:?usage: run-bench.sh <fs> <layout>}
-LAYOUT=${2:?usage: run-bench.sh <fs> <layout>}
-BENCH_ID="$FS-$LAYOUT"
+configure_benchmark() {
+  FS=${1:?usage: run-bench.sh <fs> <layout>}
+  LAYOUT=${2:?usage: run-bench.sh <fs> <layout>}
+  BENCH_ID="$FS-$LAYOUT"
 
-[ -f "$SCRIPT_DIR/fs/$FS.sh" ] || die "unknown filesystem: $FS"
-# The selected backend is checked separately by the ShellCheck CI job.
-# shellcheck source=/dev/null
-source "$SCRIPT_DIR/fs/$FS.sh"
+  [ -f "$SCRIPT_DIR/fs/$FS.sh" ] || die "unknown filesystem: $FS"
+  # The selected backend is checked separately by the ShellCheck CI job.
+  # shellcheck source=/dev/null
+  source "$SCRIPT_DIR/fs/$FS.sh"
+}
 
-require_root
-mkdir -p "$RESULTS_DIR/raw"
-
-# Full command trace (every command, with source file and line) into the
-# artifacts — the readable job log keeps only the phase lines and tool
-# output, while raw/<id>-trace.log answers "what exactly was run".
-# BENCH_TRACE=1 mirrors the trace into the live log instead.
-export PS4='+ [${BASH_SOURCE##*/}:${LINENO}] '
-if [ "${BENCH_TRACE:-0}" = 1 ]; then
-  set -x
-else
-  exec {BASH_XTRACEFD}>"$RESULTS_DIR/raw/$BENCH_ID-trace.log"
-  set -x
-fi
-
-setup_devices
-trap teardown_devices EXIT
+enable_trace() {
+  # Full command trace (every command, with source file and line) into the
+  # artifacts — the readable job log keeps only the phase lines and tool
+  # output, while raw/<id>-trace.log answers "what exactly was run".
+  # BENCH_TRACE=1 mirrors the trace into the live log instead.
+  export PS4='+ [${BASH_SOURCE##*/}:${LINENO}] '
+  if [ "${BENCH_TRACE:-0}" = 1 ]; then
+    set -x
+  else
+    exec {BASH_XTRACEFD}>"$RESULTS_DIR/raw/$BENCH_ID-trace.log"
+    set -x
+  fi
+}
 
 # --- Phase 0: host calibration --------------------------------------------
 # Same micro-workload on the runner's own disk, before any filesystem is
 # created. Matrix jobs run on separate ephemeral VMs — this anchor makes
 # outlier runners visible and cross-job numbers normalizable.
+phase_host_calibration() {
+local out
 log "phase: host calibration"
 mkdir -p "$DISK_DIR"
 out=$(fio_json calib-seqwrite --directory="$DISK_DIR" --rw=write --bs=1M \
@@ -67,19 +67,27 @@ if [ -z "${BENCH_DEVICES:-}" ]; then
     die "runner below calibration floor (seq ${CALIB_SEQ_MBPS%.*}/${CALIB_MIN_SEQ_MBPS} MB/s, rand ${CALIB_RAND_IOPS%.*}/${CALIB_MIN_RAND_IOPS} IOPS) — rerun on a fresh runner"
   fi
 fi
+}
 
+setup_benchmark_filesystem() {
 fs_setup
 FS_VERSION=$(fs_version 2>/dev/null || true)
 log "$FS ($LAYOUT) mounted at $MNT, data dir $DATA${FS_VERSION:+ [$FS_VERSION]}"
+}
 
 # --- Phase 1: sequential write -------------------------------------------
+phase_sequential_write() {
+local out
 log "phase: sequential write ($SEQ_SIZE)"
 out=$(fio_json seqwrite --directory="$DATA" --rw=write --bs=1M \
   --size="$SEQ_SIZE" --end_fsync=1)
 SEQWRITE_MBPS=$(jq '.jobs[0].write.bw_bytes / 1048576' "$out")
 rm -f "$DATA"/seqwrite*
+}
 
 # --- Phase 2: random write (fdatasync every 16 IOs) ----------------------
+phase_random_write() {
+local out
 log "phase: random write 4k, ${RUNTIME}s"
 out=$(fio_json randwrite --directory="$DATA" --rw=randwrite --bs=4k \
   --size=1G --runtime="$RUNTIME" --time_based --fdatasync=16)
@@ -97,8 +105,11 @@ out=$(fio_json randwrite-par --directory="$DATA" --rw=randwrite --bs=4k \
   --numjobs=4 --group_reporting)
 RANDWRITE4_IOPS=$(jq '.jobs[0].write.iops' "$out")
 rm -f "$DATA"/randwrite-par*
+}
 
 # --- Phase 3: random read (cold cache) ------------------------------------
+phase_random_read() {
+local out
 log "phase: random read 4k, ${RUNTIME}s"
 fio --name=readprep --filename="$DATA/read.dat" --rw=write --bs=1M \
   --size="$READ_SIZE" --end_fsync=1 --output=/dev/null
@@ -117,20 +128,26 @@ fs_drop_caches
 out=$(fio_json randread-par --filename="$DATA/read.dat" --rw=randread --bs=4k \
   --size="$READ_SIZE" --io_size=128M --numjobs=4 --group_reporting)
 RANDREAD4_IOPS=$(jq '.jobs[0].read.iops' "$out")
+}
 
 # --- Phase 3.4: sequential read (cold cache) --------------------------------
+phase_sequential_read() {
+local out
 fs_drop_caches
 # one pass over the whole file — a time-based loop re-reads cached
 # blocks and reports RAM speed (same flaw the random reads had)
 out=$(fio_json seqread --filename="$DATA/read.dat" --rw=read --bs=1M \
   --size="$READ_SIZE")
 SEQREAD_MBPS=$(jq '.jobs[0].read.bw_bytes / 1048576' "$out")
+}
 
 # --- Phase 3.5: trivial-op latency, idle vs under streaming write -----------
 # "How long until my prompt comes back": a tiny 4k write+fsync every
 # 200ms (shell history, editor swap file), measured alone and then while
 # a 1M streaming writer floods the filesystem. CoW commit storms show up
 # here as multi-second worst cases that averages never reveal.
+phase_trivial_latency() {
+local out
 log "phase: trivial-op latency, idle then under streaming write"
 out=$(fio_json lat-idle --directory="$DATA" --rw=write --bs=4k --size=4k \
   --time_based --runtime=10 --fsync=1 --thinktime=200000)
@@ -153,9 +170,12 @@ if [ "$LAT_LOAD_OPS" != null ] && [ "$LAT_LOAD_OPS" -lt 20 ]; then
 fi
 rm -f "$DATA"/lat-idle* "$DATA"/lat-load* "$DATA"/tiny*
 log "trivial-op p99: idle ${LAT_IDLE_P99%.*}ms, under load ${LAT_LOAD_P99%.*}ms (worst ${LAT_LOAD_MAX%.*}ms)"
+}
 
 # --- Phase 3.6: source-tree ops (20k small files) ----------------------------
 # The "cp -r a kernel tree" test: 20k files of 1-8k across 200 dirs.
+phase_source_tree() {
+local t0
 log "phase: source-tree ops (20k small files)"
 t0=$(now_ms)
 python3 - "$DATA/tree" <<'PY'
@@ -203,11 +223,13 @@ sync
 SMALLTREE_RM_MS=$(( $(now_ms) - t0 ))
 rm -rf "$DATA/tree"
 log "source tree: create ${SMALLTREE_CREATE_MS}ms, cp -r ${SMALLTREE_CP_MS}ms, rm -rf ${SMALLTREE_RM_MS}ms"
+}
 
 # --- Phase 3.7: sparse file ops (ftruncate) ---------------------------------
 # Community request: is sparse actually sparse, and what does growing a
 # file cost? (a) ftruncate an empty file to 1GiB — time + allocated
 # bytes; (b) double a written 256MiB file — time + allocation delta.
+phase_sparse_files() {
 log "phase: sparse file ops (ftruncate)"
 SPARSE_JSON=$(python3 - "$DATA" <<'PY'
 import json, os, sys, time
@@ -248,8 +270,11 @@ SPARSE_CREATE_BYTES=$(jq '.sparse_create_bytes' <<<"$SPARSE_JSON")
 SPARSE_GROW_MS=$(jq '.sparse_grow_ms' <<<"$SPARSE_JSON")
 SPARSE_GROW_BYTES=$(jq '.sparse_grow_bytes' <<<"$SPARSE_JSON")
 log "sparse: 1G create ${SPARSE_CREATE_MS}ms/${SPARSE_CREATE_BYTES}B allocated, grow 256M->512M ${SPARSE_GROW_MS}ms/+${SPARSE_GROW_BYTES}B"
+}
 
 # --- Phase 4: CoW aging — overwrite under a growing pile of snapshots -----
+phase_aging() {
+local i out t0
 log "phase: aging, $AGING_ITERS iterations of snapshot + $AGING_IO overwrite"
 fio --name=agingprep --filename="$DATA/aging.dat" --rw=write --bs=1M \
   --size="$AGING_SIZE" --end_fsync=1 --output=/dev/null
@@ -271,6 +296,7 @@ for i in $(seq 1 "$AGING_ITERS"); do
     --bs=4k --size="$AGING_SIZE" --io_size="$AGING_IO" --end_fsync=1)
   AGING_BW+=("$(jq '.jobs[0].write.bw_bytes / 1048576' "$out")")
 done
+}
 
 # --- Phase 5: snapshot delete + space reclaim ------------------------------
 # Deleting snapshots is where CoW filesystems differ wildly: the delete
@@ -278,6 +304,8 @@ done
 # async destroy) reclaims the pinned extents. Measured: delete latency,
 # foreground write bandwidth during reclaim (same workload as one aging
 # iteration), and time until the space is actually back.
+phase_snapshot_reclaim() {
+local i out reclaim_free t0 target
 SNAP_DELETE_MS=null
 RECLAIM_S=null
 RECLAIM_WRITE_MBPS=null
@@ -312,11 +340,15 @@ if [ "$SNAPSHOTS_OK" = 1 ] && [ "${#SNAP_MS[@]}" -gt 0 ]; then
     log "snapshot delete unsupported on $FS ($LAYOUT)"
   fi
 fi
+}
 
 # --- Phase 5.5: snapshot-count scaling --------------------------------------
 # How do snapshot operations behave at 500 snapshots (no data churn between
 # them — this isolates metadata scaling from retention cost)? Native-snapshot
 # filesystems only; dm-snapshot can't survive triple digits by design.
+phase_snapshot_scaling() {
+local i t0 ts
+local -a TAIL_MS=()
 SNAPSCALE_N=null
 SNAPSCALE_CREATE_MS=null
 SNAPSCALE_TOTAL_S=null
@@ -338,7 +370,6 @@ if [[ "$FS" =~ ^(btrfs|zfs|bcachefs)$ || "$LAYOUT" == lvm-* ]]; then
   fi
   log "phase: snapshot-count scaling ($SNAPSCALE_N snapshots)"
   t0=$(now_ms)
-  TAIL_MS=()
   for i in $(seq 1 "$SNAPSCALE_N"); do
     ts=$(now_ms)
     if ! fs_snapshot "scale$i"; then
@@ -372,8 +403,11 @@ if [[ "$FS" =~ ^(btrfs|zfs|bcachefs)$ || "$LAYOUT" == lvm-* ]]; then
   # shellcheck disable=SC2034  # consumed by layered snapshot backends
   LVM_SNAP_SIZE=2G  # aging/divergence snapshots go back to full size
 fi
+}
 
 # --- Phase 6: compression (zstd, 75%-compressible data) -------------------
+phase_compression() {
+local out
 log "phase: compression"
 COMP_RATIO=null
 COMP_MBPS=null
@@ -389,6 +423,7 @@ if fs_setup_compression "$MNT/comp"; then
 else
   log "compression unsupported on $FS — skipping"
 fi
+}
 
 # --- Phase 6: reflink + clone divergence ------------------------------------
 # The unshare penalty: overwriting a block that a reflink clone or a
@@ -396,6 +431,8 @@ fi
 # Same 4k-overwrite workload three ways — plain file (baseline), fresh
 # reflink clone, freshly-snapshotted file. XFS participates via reflink,
 # LVM via its snapshots: integrated vs classic on both axes.
+phase_divergence() {
+local out t0
 REFLINK_MS=null
 REFLINK_FIEMAP_SHARED=null
 DIV_PLAIN_MBPS=null
@@ -431,8 +468,11 @@ if [ "$SNAPSHOTS_OK" = 1 ]; then
   fi
 fi
 log "divergence: plain ${DIV_PLAIN_MBPS%.*}, clone ${DIV_CLONE_MBPS%.*}, after-snapshot ${DIV_SNAP_MBPS%.*} MB/s"
+}
 
 # --- Phase 7: degraded mode + rebuild --------------------------------------
+phase_degraded_rebuild() {
+local out t0
 DEG_WRITE_IOPS=null
 DEG_READ_IOPS=null
 REBUILD_S=null
@@ -456,6 +496,7 @@ if [ -n "$SPARE_DEV" ] && fs_degrade; then
 else
   log "degraded phase unsupported on $FS ($LAYOUT) — skipping"
 fi
+}
 
 # --- Phase 8: silent corruption + scrub + self-healing ---------------------
 # Runs AFTER degraded+rebuild: the scrub then also validates the rebuilt
@@ -467,6 +508,8 @@ fi
 # verify the test file. Checksummed CoW filesystems repair from the good
 # copy; md/lvm can only count mismatches (no checksums to know which leg
 # is right) and may serve corrupted data — that's the point of the test.
+phase_corruption_scrub() {
+local counts md5_before t0
 SCRUB_S=null
 SCRUB_FOUND=null
 SCRUB_REPAIRED=null
@@ -474,7 +517,7 @@ DATA_INTACT=null
 if [ "$LAYOUT" != single ] && [ "${#DEVICES[@]}" -ge 3 ]; then
   log "phase: silent corruption (2G of garbage onto ${DEVICES[2]}), then scrub"
   sync
-  MD5_BEFORE=$(md5sum "$DATA/read.dat" | cut -d' ' -f1)
+  md5_before=$(md5sum "$DATA/read.dat" | cut -d' ' -f1)
   corrupt_device "${DEVICES[2]}" $(( 1 << 30 )) $(( 2 << 30 ))
   drop_caches
   t0=$(now_ms)
@@ -488,13 +531,14 @@ if [ "$LAYOUT" != single ] && [ "${#DEVICES[@]}" -ge 3 ]; then
     log "scrub unsupported on $FS ($LAYOUT)"
   fi
   fs_drop_caches || true
-  if [ "$(md5sum "$DATA/read.dat" 2>/dev/null | cut -d' ' -f1)" = "$MD5_BEFORE" ]; then
+  if [ "$(md5sum "$DATA/read.dat" 2>/dev/null | cut -d' ' -f1)" = "$md5_before" ]; then
     DATA_INTACT=true
   else
     DATA_INTACT=false
   fi
   log "scrub: ${SCRUB_S}s, found=$SCRUB_FOUND repaired=$SCRUB_REPAIRED data-intact=$DATA_INTACT"
 fi
+}
 
 # --- Phase 9: near-full / ENOSPC -------------------------------------------
 # On a FRESH small array of the same layout (filling the main 64G-raw
@@ -502,13 +546,6 @@ fi
 # full, then fill to ENOSPC and answer the CoW question — can you still
 # delete at 100%, and does deleting actually get you writable space back?
 # Loop-device mode only; skipped on real hardware.
-NEARFULL95_MBPS=null
-NEARFULL99_MBPS=null
-NEARFULL95_PCT=null
-NEARFULL99_PCT=null
-ENOSPC_DELETE_OK=null
-ENOSPC_RECOVER_OK=null
-
 enospc_free() { df -B1 --output=avail "$MNT" | tail -1 | tr -d ' '; }
 enospc_pct() {  # actual fullness percent right now
   local size free
@@ -535,6 +572,15 @@ enospc_fill_to() {  # $1 = stop when free <= this percent of fs size
     n=$((n+1))
   done
 }
+
+phase_enospc() {
+local free_at_full i out
+NEARFULL95_MBPS=null
+NEARFULL99_MBPS=null
+NEARFULL95_PCT=null
+NEARFULL99_PCT=null
+ENOSPC_DELETE_OK=null
+ENOSPC_RECOVER_OK=null
 
 if [ -z "${BENCH_DEVICES:-}" ]; then
   log "phase: near-full / ENOSPC (fresh 4x${ENOSPC_DEV_SIZE:-2G} $LAYOUT array)"
@@ -567,12 +613,12 @@ if [ -z "${BENCH_DEVICES:-}" ]; then
     [ -n "$NEARFULL99_MBPS" ] || NEARFULL99_MBPS=null
     enospc_fill_to 0 || true  # push to hard ENOSPC
     log "ENOSPC reached (free: $(( $(enospc_free) / 1048576 ))M) — delete test"
-    FREE_AT_FULL=$(enospc_free)
+    free_at_full=$(enospc_free)
     ENOSPC_DELETE_OK=false
     if rm -f "$DATA/fill.0" 2>/dev/null; then
       sync
       for i in $(seq 1 30); do
-        if [ "$(enospc_free)" -gt $(( FREE_AT_FULL + 8388608 )) ]; then
+        if [ "$(enospc_free)" -gt $(( free_at_full + 8388608 )) ]; then
           ENOSPC_DELETE_OK=true
           break
         fi
@@ -590,8 +636,10 @@ if [ -z "${BENCH_DEVICES:-}" ]; then
     log "ENOSPC phase: small-array setup failed — skipping"
   fi
 fi
+}
 
 # --- Assemble result -------------------------------------------------------
+write_result() {
 AGING_JSON=$(printf '%s\n' "${AGING_BW[@]}" | jq -s '.')
 if [ "${#SNAP_MS[@]}" -gt 0 ]; then
   # median, not mean — VM clock steps can corrupt individual samples
@@ -726,3 +774,39 @@ python3 "$SCRIPT_DIR/validate-result.py" "$RESULT_FILE"
 chmod -R a+rX "$RESULTS_DIR"
 log "done: $RESULT_FILE"
 jq . "$RESULT_FILE" >&2
+}
+
+run_benchmark_phases() {
+  phase_host_calibration
+  setup_benchmark_filesystem
+  phase_sequential_write
+  phase_random_write
+  phase_random_read
+  phase_sequential_read
+  phase_trivial_latency
+  phase_source_tree
+  phase_sparse_files
+  phase_aging
+  phase_snapshot_reclaim
+  phase_snapshot_scaling
+  phase_compression
+  phase_divergence
+  phase_degraded_rebuild
+  phase_corruption_scrub
+  phase_enospc
+  write_result
+}
+
+main() {
+  configure_benchmark "$@"
+  require_root
+  mkdir -p "$RESULTS_DIR/raw"
+  enable_trace
+  setup_devices
+  trap teardown_devices EXIT
+  run_benchmark_phases
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  main "$@"
+fi
