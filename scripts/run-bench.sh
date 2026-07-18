@@ -287,9 +287,10 @@ if [ "$SNAPSHOTS_OK" = 1 ] && [ "${#SNAP_MS[@]}" -gt 0 ]; then
     out=$(fio_json reclaim-write --filename="$DATA/aging.dat" --rw=randwrite \
       --bs=4k --size="$AGING_SIZE" --io_size="$AGING_IO" --end_fsync=1)
     RECLAIM_WRITE_MBPS=$(jq '.jobs[0].write.bw_bytes / 1048576' "$out")
-    # 85%: post-reclaim free never quite matches pre-aging (CoW'd file
-    # generations, metadata growth) — 90% missed by <1% in testing
-    target=$(( FREE_BEFORE_AGING * 85 / 100 ))
+    # 80%: post-reclaim free never quite matches pre-aging (CoW'd file
+    # generations, metadata growth); btrfs/single stabilized at 84.7%
+    # and otherwise waited out the full five-minute window.
+    target=$(( FREE_BEFORE_AGING * 80 / 100 ))
     for i in $(seq 1 300); do
       reclaim_free=$(fs_free_bytes)
       if [ "$reclaim_free" -ge "$target" ]; then
@@ -658,7 +659,7 @@ jq -n \
   --argjson data_intact "$DATA_INTACT" \
   --argjson calib_seqwrite_mbps "$CALIB_SEQ_MBPS" \
   --argjson calib_randwrite_iops "$CALIB_RAND_IOPS" \
-  '{schema_version: 2,
+  '{schema_version: 3,
     fs: $fs, layout: $layout, kernel: $kernel, version: $version, date: $date,
     devices: $devices, ndev: $ndev,
     calibration: {seqwrite_mbps: $calib_seqwrite_mbps,

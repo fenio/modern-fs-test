@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "document": {
     "schema_version": {"type": "integer", "nonnegative": true, "required": false},
     "fs": {"type": "string", "nonempty": true},

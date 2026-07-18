@@ -293,13 +293,33 @@ class AuditRegressionTests(unittest.TestCase):
             result.stdout,
         )
 
+    def test_schema_v3_reclaim_timeout_uses_80_percent_target(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runs = Path(tmp) / "runs"
+            shutil.copytree(FIXTURE_RUNS, runs)
+            result_file = runs / "101" / "result-btrfs-raid1.json"
+            document = json.loads(result_file.read_text())
+            document["schema_version"] = 3
+            document["results"]["reclaim_s"] = None
+            document["results"]["reclaim_free_pct"] = 78.4
+            result_file.write_text(json.dumps(document))
+
+            result = run_audit(runs)
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn(
+            "btrfs/raid1: reclaim did not finish within 300s; "
+            "78.4% restored, target 80%",
+            result.stdout,
+        )
+
 
 class ResultSchemaTests(unittest.TestCase):
     def test_manifest_preserves_dashboard_metric_contract(self):
         schema = json.loads(SCHEMA.read_text())
         metrics = schema["metrics"]
 
-        self.assertEqual(schema["schema_version"], 2)
+        self.assertEqual(schema["schema_version"], 3)
         self.assertEqual(
             [
                 (metric["key"], metric["label"], metric["unit"], metric["better"])
