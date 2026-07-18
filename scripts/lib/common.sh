@@ -83,13 +83,16 @@ luks_wrap_top() {
   [ -f "$keyfile" ] || dd if=/dev/urandom of="$keyfile" bs=64 count=1 status=none
   cryptsetup luksFormat -q --type luks2 --key-file "$keyfile" "$1"
   cryptsetup open --key-file "$keyfile" "$1" "$name"
+  # shellcheck disable=SC2034  # consumed by layered filesystem backends
   LUKS_TOP_DEV="/dev/mapper/$name"
 }
 
 luks_close_all() {
   local m
   for m in /dev/mapper/fsbench-luks-*; do
-    [ -e "$m" ] && cryptsetup close "${m##*/}" 2>/dev/null || true
+    if [ -e "$m" ]; then
+      cryptsetup close "${m##*/}" 2>/dev/null || true
+    fi
   done
 }
 

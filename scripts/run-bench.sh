@@ -10,6 +10,7 @@
 # Emits $RESULTS_DIR/result-<fs>-<layout>.json plus raw fio output.
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# shellcheck source=lib/common.sh
 source "$SCRIPT_DIR/lib/common.sh"
 
 FS=${1:?usage: run-bench.sh <fs> <layout>}
@@ -17,6 +18,8 @@ LAYOUT=${2:?usage: run-bench.sh <fs> <layout>}
 BENCH_ID="$FS-$LAYOUT"
 
 [ -f "$SCRIPT_DIR/fs/$FS.sh" ] || die "unknown filesystem: $FS"
+# The selected backend is checked separately by the ShellCheck CI job.
+# shellcheck source=/dev/null
 source "$SCRIPT_DIR/fs/$FS.sh"
 
 require_root
@@ -366,6 +369,7 @@ if [[ "$FS" =~ ^(btrfs|zfs|bcachefs)$ || "$LAYOUT" == lvm-* ]]; then
     SNAPSCALE_DELETE_MS=$(( $(now_ms) - t0 ))
   fi
   log "snapscale: $SNAPSCALE_N snaps in ${SNAPSCALE_TOTAL_S}s, create@tail ${SNAPSCALE_CREATE_MS}ms, list ${SNAPSCALE_LIST_MS}ms, remount ${SNAPSCALE_REMOUNT_MS}ms, delete ${SNAPSCALE_DELETE_MS}ms"
+  # shellcheck disable=SC2034  # consumed by layered snapshot backends
   LVM_SNAP_SIZE=2G  # aging/divergence snapshots go back to full size
 fi
 

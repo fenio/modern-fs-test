@@ -1,6 +1,7 @@
 # shellcheck shell=bash
 # btrfs backend. Layout: raid1 data + metadata across all devices.
 
+# shellcheck disable=SC2034  # consumed by run-bench.sh
 FS_REFLINK=1
 
 fs_setup() {

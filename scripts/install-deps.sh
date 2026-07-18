@@ -29,6 +29,7 @@ case "$FS" in
     install -d -m 0755 /etc/apt/keyrings
     wget -qO /etc/apt/keyrings/apt.bcachefs.org.asc https://apt.bcachefs.org/apt.bcachefs.org.asc
     chmod 0644 /etc/apt/keyrings/apt.bcachefs.org.asc
+    # shellcheck source=/dev/null
     codename=$(. /etc/os-release && echo "$VERSION_CODENAME")
     cat > /etc/apt/sources.list.d/apt.bcachefs.org.sources <<EOF
 Types: deb

@@ -3,8 +3,10 @@
 # The single layout is the "what does any of this cost" anchor. Snapshots
 # come from LVM in the lvm layout; no compression, no reflink.
 
+# shellcheck source=../lib/layered.sh
 source "$SCRIPT_DIR/lib/layered.sh"
 
+# shellcheck disable=SC2034  # consumed by run-bench.sh
 FS_REFLINK=0
 
 fs_setup() {
@@ -20,6 +22,7 @@ fs_setup() {
   mkfs.ext4 -Fq "$LAYERED_DEV"
   mount -o noatime "$LAYERED_DEV" "$MNT"
   mkdir -p "$MNT/data"
+  # shellcheck disable=SC2034  # consumed by run-bench.sh
   DATA="$MNT/data"
 }
 
