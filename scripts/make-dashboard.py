@@ -559,6 +559,14 @@ h2 { font-size: 15px; font-weight: 650; margin: 40px 0 4px; }
 .index-score:hover { text-decoration: underline; text-underline-offset: 3px; }
 .index-score.good { color: var(--s4); }
 .index-score.bad { color: var(--s3); }
+.index-sort {
+  align-items: center; background: none; border: 0; color: inherit; cursor: pointer;
+  display: inline-flex; font: inherit; gap: 4px; justify-content: flex-end; padding: 0;
+  width: 100%;
+}
+.index-sort:hover { color: var(--ink); }
+.index-sort:focus-visible { outline: 2px solid var(--axis); outline-offset: 3px; }
+.index-table th:first-child .index-sort { justify-content: flex-start; }
 .index-coverage { display: block; color: var(--muted); font-size: 10.5px; }
 .index-badge {
   display: inline-block; border: 1px solid var(--ring); border-radius: 999px;
@@ -713,6 +721,7 @@ const scoreGeomean = values => values.length
   : null;
 const integrityCapable = entity => COW.has(famOf(entity))
   || entity.id === "xfs/zvol" || entity.id === "xfs/lvm-raid10-int";
+let indexSortCol = null, indexSortDir = 1;  // null = matrix order
 
 function scoreSummaryData(view) {
   const completeRuns = DATA.runs.filter(run =>
@@ -782,6 +791,14 @@ function indexButton(ratio, coverage, total, title, onClick) {
   return holder;
 }
 
+const scoreIntegrity = row => row.integrity === false
+  ? ["FAIL", "fail", "Data changed after corruption", 1]
+  : row.integrity === true && integrityCapable(row.entity)
+    ? ["PASS", "pass", "Checksummed or integrity-protected data remained intact", 3]
+    : row.integrity === true
+      ? ["LUCKY", "lucky", "Intact read without data checksums; read-balancing luck", 2]
+      : ["N/A", "", "Corruption test not applicable", 0];
+
 function buildScoreSummary(view) {
   const summary = scoreSummaryData(view);
   const section = el("section", {id: "summary-indices"});
@@ -789,7 +806,8 @@ function buildScoreSummary(view) {
   section.appendChild(el("p", {class: "note"},
     `Score model v${SCORE_MODEL.version}: 100 = the selected cohort median. Metrics are ` +
     `normalized by direction, then geometric-meaned with equal subgroup and group weight. ` +
-    `Using ${summary.runs.length} recent complete selected-cohort run${summary.runs.length === 1 ? "" : "s"}; integrity is never averaged.`));
+    `Using ${summary.runs.length} recent complete selected-cohort run${summary.runs.length === 1 ? "" : "s"}; ` +
+    `integrity is never averaged. Click a column header to sort.`));
   if (!summary.runs.length) {
     section.appendChild(el("div", {class: "card index-card"},
       '<p class="note">No run contains every selected configuration; detailed dashboard data remains available below.</p>'));
@@ -798,10 +816,6 @@ function buildScoreSummary(view) {
 
   const card = el("div", {class: "card wide index-card"});
   const table = el("table", {class: "index-table"});
-  const head = el("tr");
-  ["configuration", "Overall Core", ...SCORE_MODEL.groups.map(group => group.label), "Integrity"]
-    .forEach(label => head.appendChild(el("th", {}, label)));
-  table.appendChild(head);
   const detail = el("div", {class: "index-detail"},
     "Select a score to see its contributing normalized metrics.");
   const showDetail = (entity, label, contributions) => {
@@ -811,29 +825,62 @@ function buildScoreSummary(view) {
     }).join("");
     detail.innerHTML = `<b>${entity.id} · ${label}</b><br>${parts}`;
   };
-  summary.rows.forEach(row => {
-    const tr = el("tr");
-    tr.appendChild(el("td", {},
-      `<span style="display:inline-flex;align-items:center;gap:7px">${key(row.entity)}${row.entity.id}${isStale(row.entity.id) ? " \u2020" : ""}</span>`));
-    tr.appendChild(el("td")).appendChild(indexButton(
-      row.overall, null, null, "Show group contributions",
-      () => showDetail(row.entity, "Overall Core",
-        row.groups.filter(group => numeric(group.ratio)).map(group => ({
-          metric: group.label, ratio: group.ratio,
-        })))));
-    row.groups.forEach(group => tr.appendChild(el("td")).appendChild(indexButton(
-      group.ratio, group.coverage, group.total, "Show metric contributions",
-      () => showDetail(row.entity, group.label, group.contributions))));
-    const integrity = row.integrity === false ? ["FAIL", "fail", "Data changed after corruption"]
-      : row.integrity === true && integrityCapable(row.entity)
-        ? ["PASS", "pass", "Checksummed or integrity-protected data remained intact"]
-        : row.integrity === true
-          ? ["LUCKY", "lucky", "Intact read without data checksums; read-balancing luck"]
-          : ["N/A", "", "Corruption test not applicable"];
-    tr.appendChild(el("td", {},
-      `<span class="index-badge ${integrity[1]}" title="${integrity[2]}">${integrity[0]}</span>`));
-    table.appendChild(tr);
-  });
+  const columns = [
+    {label: "configuration", str: true, get: row => row.entity.id},
+    {label: "Overall Core", get: row => row.overall},
+    ...SCORE_MODEL.groups.map((group, index) => ({
+      label: group.label, get: row => row.groups[index].ratio,
+    })),
+    {label: "Integrity", get: row => scoreIntegrity(row)[3]},
+  ];
+  const draw = () => {
+    table.replaceChildren();
+    const head = el("tr");
+    columns.forEach((column, ci) => {
+      const active = indexSortCol === ci;
+      const arrow = active ? (indexSortDir > 0 ? "▲" : "▼") : "";
+      const th = el("th", {"aria-sort": active
+        ? (indexSortDir > 0 ? "ascending" : "descending") : "none"});
+      const button = el("button", {class: "index-sort", type: "button",
+        title: `Sort by ${column.label}`}, `${column.label}<span aria-hidden="true">${arrow}</span>`);
+      button.addEventListener("click", () => {
+        if (active) indexSortDir = -indexSortDir;
+        else { indexSortCol = ci; indexSortDir = column.str ? 1 : -1; }
+        draw();
+      });
+      th.appendChild(button);
+      head.appendChild(th);
+    });
+    table.appendChild(head);
+    const rows = [...summary.rows];
+    if (indexSortCol != null) rows.sort((a, b) => {
+      const column = columns[indexSortCol];
+      const x = column.get(a), y = column.get(b);
+      if (x == null && y == null) return 0;
+      if (x == null) return 1;
+      if (y == null) return -1;
+      return (column.str ? x.localeCompare(y) : x - y) * indexSortDir;
+    });
+    rows.forEach(row => {
+      const tr = el("tr");
+      tr.appendChild(el("td", {},
+        `<span style="display:inline-flex;align-items:center;gap:7px">${key(row.entity)}${row.entity.id}${isStale(row.entity.id) ? " \u2020" : ""}</span>`));
+      tr.appendChild(el("td")).appendChild(indexButton(
+        row.overall, null, null, "Show group contributions",
+        () => showDetail(row.entity, "Overall Core",
+          row.groups.filter(group => numeric(group.ratio)).map(group => ({
+            metric: group.label, ratio: group.ratio,
+          })))));
+      row.groups.forEach(group => tr.appendChild(el("td")).appendChild(indexButton(
+        group.ratio, group.coverage, group.total, "Show metric contributions",
+        () => showDetail(row.entity, group.label, group.contributions))));
+      const integrity = scoreIntegrity(row);
+      tr.appendChild(el("td", {},
+        `<span class="index-badge ${integrity[1]}" title="${integrity[2]}">${integrity[0]}</span>`));
+      table.appendChild(tr);
+    });
+  };
+  draw();
   card.appendChild(table);
   card.appendChild(detail);
   section.appendChild(card);
