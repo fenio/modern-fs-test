@@ -272,6 +272,73 @@ SPARSE_GROW_BYTES=$(jq '.sparse_grow_bytes' <<<"$SPARSE_JSON")
 log "sparse: 1G create ${SPARSE_CREATE_MS}ms/${SPARSE_CREATE_BYTES}B allocated, grow 256M->512M ${SPARSE_GROW_MS}ms/+${SPARSE_GROW_BYTES}B"
 }
 
+large_dir_scan() {  # <directory> <names|stat>
+python3 - "$1" "$2" <<'PY'
+import os, sys
+count = 0
+with os.scandir(sys.argv[1]) as entries:
+    for entry in entries:
+        if sys.argv[2] == "stat":
+            entry.stat(follow_symlinks=False)
+        count += 1
+print(count)
+PY
+}
+
+# --- Phase 3.8: large single-directory scalability --------------------------
+phase_large_directory() {
+local count i t0
+local -a warm_ms=()
+[[ $LARGEDIR_FILES =~ ^[1-9][0-9]*$ ]] \
+  || die "LARGEDIR_FILES must be a positive integer"
+log "phase: large directory ($LARGEDIR_FILES empty files)"
+
+sync
+t0=$(now_ms)
+python3 - "$DATA/large-dir" "$LARGEDIR_FILES" <<'PY'
+import os, sys
+base, count = sys.argv[1], int(sys.argv[2])
+os.mkdir(base)
+width = len(str(count - 1))
+for i in range(count):
+    fd = os.open(os.path.join(base, f"f{i:0{width}d}"),
+                 os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+    os.close(fd)
+PY
+sync
+LARGEDIR_CREATE_MS=$(( $(now_ms) - t0 ))
+
+fs_drop_caches
+t0=$(now_ms)
+count=$(large_dir_scan "$DATA/large-dir" names)
+LARGEDIR_READDIR_COLD_MS=$(( $(now_ms) - t0 ))
+[ "$count" -eq "$LARGEDIR_FILES" ] \
+  || die "large-directory name scan saw $count/$LARGEDIR_FILES files"
+
+fs_drop_caches
+t0=$(now_ms)
+count=$(large_dir_scan "$DATA/large-dir" stat)
+LARGEDIR_STAT_COLD_MS=$(( $(now_ms) - t0 ))
+[ "$count" -eq "$LARGEDIR_FILES" ] \
+  || die "large-directory cold stat saw $count/$LARGEDIR_FILES files"
+
+for i in 1 2 3; do
+  t0=$(now_ms)
+  count=$(large_dir_scan "$DATA/large-dir" stat)
+  warm_ms+=($(( $(now_ms) - t0 )))
+  [ "$count" -eq "$LARGEDIR_FILES" ] \
+    || die "large-directory warm stat saw $count/$LARGEDIR_FILES files"
+done
+LARGEDIR_STAT_WARM_MS=$(printf '%s\n' "${warm_ms[@]}" \
+  | jq -s 'sort | .[length/2|floor]')
+
+t0=$(now_ms)
+rm -rf "$DATA/large-dir"
+sync
+LARGEDIR_DELETE_MS=$(( $(now_ms) - t0 ))
+log "large directory: create ${LARGEDIR_CREATE_MS}ms, cold names ${LARGEDIR_READDIR_COLD_MS}ms, cold stat ${LARGEDIR_STAT_COLD_MS}ms, warm stat ${LARGEDIR_STAT_WARM_MS}ms, delete ${LARGEDIR_DELETE_MS}ms"
+}
+
 # --- Phase 4: CoW aging — overwrite under a growing pile of snapshots -----
 phase_aging() {
 local i out t0
@@ -673,6 +740,11 @@ jq -n \
   --argjson randwrite4_iops "$RANDWRITE4_IOPS" \
   --argjson smalltree_cp_ms "$SMALLTREE_CP_MS" \
   --argjson smalltree_rm_ms "$SMALLTREE_RM_MS" \
+  --argjson largedir_create_ms "$LARGEDIR_CREATE_MS" \
+  --argjson largedir_readdir_cold_ms "$LARGEDIR_READDIR_COLD_MS" \
+  --argjson largedir_stat_cold_ms "$LARGEDIR_STAT_COLD_MS" \
+  --argjson largedir_stat_warm_ms "$LARGEDIR_STAT_WARM_MS" \
+  --argjson largedir_delete_ms "$LARGEDIR_DELETE_MS" \
   --argjson aging_mbps "$AGING_JSON" \
   --argjson snapshot_create_ms "$SNAP_AVG" \
   --argjson snapshot_delete_ms "$SNAP_DELETE_MS" \
@@ -711,7 +783,7 @@ jq -n \
   --argjson data_intact "$DATA_INTACT" \
   --argjson calib_seqwrite_mbps "$CALIB_SEQ_MBPS" \
   --argjson calib_randwrite_iops "$CALIB_RAND_IOPS" \
-  '{schema_version: 3,
+  '{schema_version: 4,
     fs: $fs, layout: $layout, kernel: $kernel, version: $version, date: $date,
     devices: $devices, ndev: $ndev,
     calibration: {seqwrite_mbps: $calib_seqwrite_mbps,
@@ -732,6 +804,11 @@ jq -n \
               randwrite4_iops: $randwrite4_iops,
               smalltree_cp_ms: $smalltree_cp_ms,
               smalltree_rm_ms: $smalltree_rm_ms,
+              largedir_create_ms: $largedir_create_ms,
+              largedir_readdir_cold_ms: $largedir_readdir_cold_ms,
+              largedir_stat_cold_ms: $largedir_stat_cold_ms,
+              largedir_stat_warm_ms: $largedir_stat_warm_ms,
+              largedir_delete_ms: $largedir_delete_ms,
               aging_mbps: $aging_mbps,
               snapshot_create_ms: $snapshot_create_ms,
               snapshot_delete_ms: $snapshot_delete_ms,
@@ -786,6 +863,7 @@ run_benchmark_phases() {
   phase_trivial_latency
   phase_source_tree
   phase_sparse_files
+  phase_large_directory
   phase_aging
   phase_snapshot_reclaim
   phase_snapshot_scaling

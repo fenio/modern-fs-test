@@ -37,6 +37,8 @@ NOISY = {
     "nearfull95_write_mbps", "nearfull99_write_mbps",
     "snapscale_remount_ms", "snapscale_list_ms", "snapscale_delete_ms",
     "smalltree_create_ms",  # metadata-heavy create is cache/VM sensitive
+    "largedir_create_ms", "largedir_readdir_cold_ms", "largedir_stat_cold_ms",
+    "largedir_delete_ms",
     "lat_load_ops",
     "snapshot_create_ms",  # taken mid-aging under IO; txg/commit timing dependent
 }

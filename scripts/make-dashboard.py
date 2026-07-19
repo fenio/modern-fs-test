@@ -145,6 +145,30 @@ DOCS = {
     "smalltree_rm_ms": (
         "rm -rf of the copied 20k-file tree, plus sync. Phase 3.6.",
         [("run-bench.sh (Phase 3.6)", "scripts/run-bench.sh")]),
+    "largedir_create_ms": (
+        "Serially create LARGEDIR_FILES deterministic empty files in one directory, then "
+        "sync (100,000 files in CI; tunable to one million for the original huge-directory "
+        "workload). This isolates one directory's indexing and insertion behavior. Phase 3.8.",
+        [("run-bench.sh (Phase 3.8)", "scripts/run-bench.sh")]),
+    "largedir_readdir_cold_ms": (
+        "After a cold-cache barrier, consume every name in the large directory with "
+        "os.scandir without stat calls or sorting. The count is verified against "
+        "LARGEDIR_FILES. This isolates directory enumeration from metadata lookup. Phase 3.8.",
+        [("run-bench.sh (Phase 3.8)", "scripts/run-bench.sh")]),
+    "largedir_stat_cold_ms": (
+        "After a second cold-cache barrier, enumerate the large directory and explicitly "
+        "stat every entry. This is the filesystem-facing core of ls -lU without terminal "
+        "formatting and output overhead. Phase 3.8.",
+        [("run-bench.sh (Phase 3.8)", "scripts/run-bench.sh")]),
+    "largedir_stat_warm_ms": (
+        "Median of three immediate repetitions of the stat-every-entry scan, with no cache "
+        "drop between runs. Compare with the cold stat card to expose dentry/inode-cache "
+        "behavior. Phase 3.8.",
+        [("run-bench.sh (Phase 3.8)", "scripts/run-bench.sh")]),
+    "largedir_delete_ms": (
+        "rm -rf the single directory containing LARGEDIR_FILES empty files, then sync. "
+        "This measures mass unlink and directory-index cleanup. Phase 3.8.",
+        [("run-bench.sh (Phase 3.8)", "scripts/run-bench.sh")]),
     "sparse_create_ms": (
         "ftruncate an empty file to 1GiB + fsync — sparse file creation should be a "
         "metadata-only operation. Time here, allocated bytes (st_blocks) in the next "
