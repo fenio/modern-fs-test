@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "document": {
     "schema_version": {"type": "integer", "nonnegative": true, "required": false},
     "fs": {"type": "string", "nonempty": true},
@@ -66,6 +66,11 @@
     {"key": "sparse_create_ms", "type": "number", "label": "ftruncate empty file to 1G", "unit": "ms", "better": "lower", "display": "card", "nonnegative": true},
     {"key": "sparse_create_bytes", "type": "number", "label": "Bytes allocated for sparse 1G", "unit": "B", "better": "lower", "display": "card", "nonnegative": true},
     {"key": "sparse_grow_ms", "type": "number", "label": "ftruncate 256M file to 512M", "unit": "ms", "better": "lower", "display": "card", "nonnegative": true},
+    {"key": "largedir_create_ms", "type": "number", "label": "Create 100k files in one directory", "unit": "ms", "better": "lower", "display": "card", "nonnegative": true, "introduced": 4},
+    {"key": "largedir_readdir_cold_ms", "type": "number", "label": "Enumerate 100k names, cold", "unit": "ms", "better": "lower", "display": "card", "nonnegative": true, "introduced": 4},
+    {"key": "largedir_stat_cold_ms", "type": "number", "label": "Stat 100k files, cold", "unit": "ms", "better": "lower", "display": "card", "nonnegative": true, "introduced": 4},
+    {"key": "largedir_stat_warm_ms", "type": "number", "label": "Stat 100k files, warm", "unit": "ms", "better": "lower", "display": "card", "nonnegative": true, "introduced": 4},
+    {"key": "largedir_delete_ms", "type": "number", "label": "Delete 100k-file directory", "unit": "ms", "better": "lower", "display": "card", "nonnegative": true, "introduced": 4},
     {"key": "snapshot_create_ms", "type": "number", "label": "Snapshot create", "unit": "ms", "better": "lower", "display": "card", "capability": "snapshots", "nullable": true, "nonnegative": true},
     {"key": "snapshot_delete_ms", "type": "number", "label": "Snapshot delete (all)", "unit": "ms", "better": "lower", "display": "card", "capability": "snapshots", "nullable": true, "nonnegative": true},
     {"key": "reclaim_s", "type": "number", "label": "Space reclaim after delete", "unit": "s", "better": "lower", "display": "card", "capability": "snapshots", "nullable": true, "nonnegative": true},

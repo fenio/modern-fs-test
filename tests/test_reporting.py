@@ -38,6 +38,11 @@ METRIC_CONTRACT = [
     ("sparse_create_ms", "ftruncate empty file to 1G", "ms", "lower"),
     ("sparse_create_bytes", "Bytes allocated for sparse 1G", "B", "lower"),
     ("sparse_grow_ms", "ftruncate 256M file to 512M", "ms", "lower"),
+    ("largedir_create_ms", "Create 100k files in one directory", "ms", "lower"),
+    ("largedir_readdir_cold_ms", "Enumerate 100k names, cold", "ms", "lower"),
+    ("largedir_stat_cold_ms", "Stat 100k files, cold", "ms", "lower"),
+    ("largedir_stat_warm_ms", "Stat 100k files, warm", "ms", "lower"),
+    ("largedir_delete_ms", "Delete 100k-file directory", "ms", "lower"),
     ("snapshot_create_ms", "Snapshot create", "ms", "lower"),
     ("snapshot_delete_ms", "Snapshot delete (all)", "ms", "lower"),
     ("reclaim_s", "Space reclaim after delete", "s", "lower"),
@@ -413,7 +418,7 @@ class ResultSchemaTests(unittest.TestCase):
         schema = json.loads(SCHEMA.read_text())
         metrics = schema["metrics"]
 
-        self.assertEqual(schema["schema_version"], 3)
+        self.assertEqual(schema["schema_version"], 4)
         self.assertEqual(
             [
                 (metric["key"], metric["label"], metric["unit"], metric["better"])
@@ -552,6 +557,32 @@ class ResultSchemaTests(unittest.TestCase):
             result.stderr,
         )
 
+    def test_schema_v4_requires_large_directory_metrics(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            result_file = Path(tmp) / "result.json"
+            schema = json.loads(SCHEMA.read_text())
+            document = json.loads(
+                (FIXTURE_RUNS / "101" / "result-btrfs-raid1.json").read_text()
+            )
+            document["schema_version"] = 4
+            introduced = [
+                metric["key"]
+                for metric in schema["metrics"]
+                if metric.get("introduced") == 4
+            ]
+            for key in introduced:
+                document["results"][key] = 1
+            del document["results"]["largedir_stat_warm_ms"]
+            result_file.write_text(json.dumps(document))
+
+            result = run_script(VALIDATOR, result_file)
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(
+            "document.results: missing metrics: largedir_stat_warm_ms",
+            result.stderr,
+        )
+
     def test_wrong_metric_type_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             result_file = Path(tmp) / "result.json"
@@ -598,6 +629,13 @@ class ResultSchemaTests(unittest.TestCase):
         self.assertLess(write_result, validate_result)
         self.assertLess(validate_result, report_success)
 
+    def test_benchmark_emits_current_schema_version(self):
+        schema_version = json.loads(SCHEMA.read_text())["schema_version"]
+        match = re.search(r"'\{schema_version: (\d+),", RUN_BENCH.read_text())
+
+        self.assertIsNotNone(match)
+        self.assertEqual(int(match.group(1)), schema_version)
+
 
 class BenchmarkPhaseTests(unittest.TestCase):
     phases = [
@@ -610,6 +648,7 @@ class BenchmarkPhaseTests(unittest.TestCase):
         "phase_trivial_latency",
         "phase_source_tree",
         "phase_sparse_files",
+        "phase_large_directory",
         "phase_aging",
         "phase_snapshot_reclaim",
         "phase_snapshot_scaling",
@@ -673,6 +712,36 @@ printf '%s %s %s\n' "$DEG_WRITE_IOPS" "$DEG_READ_IOPS" "$REBUILD_S"
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.strip(), "null null null")
+
+    def test_large_directory_phase_runs_with_tiny_file_count(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = r'''
+DATA=$2
+LARGEDIR_FILES=3
+cache_drops=0
+log() { :; }
+sync() { :; }
+now_ms() { printf '1\n'; }
+fs_drop_caches() { cache_drops=$((cache_drops + 1)); }
+jq() {
+  python3 -c 'import sys; values=sorted(map(int, sys.stdin)); print(values[len(values)//2])'
+}
+phase_large_directory
+directory_left=0
+[ ! -e "$DATA/large-dir" ] || directory_left=1
+printf '%s %s %s %s %s %s %s\n' \
+  "$LARGEDIR_CREATE_MS" "$LARGEDIR_READDIR_COLD_MS" \
+  "$LARGEDIR_STAT_COLD_MS" "$LARGEDIR_STAT_WARM_MS" \
+  "$LARGEDIR_DELETE_MS" "$cache_drops" "$directory_left"
+'''
+
+            result = run_benchmark_shell(source, tmp)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        values = [int(value) for value in result.stdout.split()]
+        self.assertEqual(len(values), 7)
+        self.assertTrue(all(value >= 0 for value in values[:5]))
+        self.assertEqual(values[5:], [2, 0])
 
 
 class BackendConfigurationTests(unittest.TestCase):
