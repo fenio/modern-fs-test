@@ -575,7 +575,11 @@ h2 { font-size: 15px; font-weight: 650; margin: 40px 0 4px; }
 .index-badge.pass { color: var(--s4); border-color: var(--s4); }
 .index-badge.fail { color: var(--s3); border-color: var(--s3); }
 .index-badge.lucky { color: var(--s5); border-color: var(--s5); }
-.index-detail { color: var(--ink-2); font-size: 12px; min-height: 20px; margin-top: 10px; }
+.index-table .index-detail-row td:first-child {
+  background: var(--grid); box-shadow: none; padding: 8px 10px 10px;
+  position: static; text-align: left; white-space: normal;
+}
+.index-detail { color: var(--ink-2); font-size: 12px; }
 .index-detail b { color: var(--ink); font-weight: 600; }
 .index-detail span { display: inline-block; margin: 3px 14px 0 0; }
 svg.chart { display: block; width: 100%; height: auto; }
@@ -782,8 +786,9 @@ function indexButton(ratio, coverage, total, title, onClick) {
   const score = Math.round(ratio * 100);
   const tone = score >= 105 ? " good" : score <= 95 ? " bad" : "";
   const holder = el("span");
-  const button = el("button", {class: `index-score${tone}`, type: "button", title}, score);
-  button.addEventListener("click", onClick);
+  const button = el("button", {class: `index-score${tone}`, type: "button", title,
+    "aria-expanded": "false"}, score);
+  button.addEventListener("click", () => onClick(button));
   holder.appendChild(button);
   if (coverage != null) {
     holder.appendChild(el("span", {class: "index-coverage"}, `${coverage}/${total} metrics`));
@@ -807,7 +812,8 @@ function buildScoreSummary(view) {
     `Score model v${SCORE_MODEL.version}: 100 = the selected cohort median. Metrics are ` +
     `normalized by direction, then geometric-meaned with equal subgroup and group weight. ` +
     `Using ${summary.runs.length} recent complete selected-cohort run${summary.runs.length === 1 ? "" : "s"}; ` +
-    `integrity is never averaged. Click a column header to sort.`));
+    `integrity is never averaged. Click a column header to sort; select a score ` +
+    `to expand its normalized contributions.`));
   if (!summary.runs.length) {
     section.appendChild(el("div", {class: "card index-card"},
       '<p class="note">No run contains every selected configuration; detailed dashboard data remains available below.</p>'));
@@ -816,15 +822,6 @@ function buildScoreSummary(view) {
 
   const card = el("div", {class: "card wide index-card"});
   const table = el("table", {class: "index-table"});
-  const detail = el("div", {class: "index-detail"},
-    "Select a score to see its contributing normalized metrics.");
-  const showDetail = (entity, label, contributions) => {
-    const parts = contributions.map(item => {
-      const metric = scoreMetric.get(item.metric);
-      return `<span>${metric ? metric.label : item.metric}: <b>${Math.round(item.ratio * 100)}</b></span>`;
-    }).join("");
-    detail.innerHTML = `<b>${entity.id} · ${label}</b><br>${parts}`;
-  };
   const columns = [
     {label: "configuration", str: true, get: row => row.entity.id},
     {label: "Overall Core", get: row => row.overall},
@@ -833,7 +830,39 @@ function buildScoreSummary(view) {
     })),
     {label: "Integrity", get: row => scoreIntegrity(row)[3]},
   ];
+  let openDetail = null, openButton = null;
+  const closeDetail = () => {
+    if (openButton) {
+      openButton.setAttribute("aria-expanded", "false");
+      openButton.removeAttribute("aria-controls");
+    }
+    if (openDetail) openDetail.remove();
+    openDetail = null;
+    openButton = null;
+  };
+  const showDetail = (button, anchor, entity, label, contributions) => {
+    if (button === openButton) {
+      closeDetail();
+      return;
+    }
+    closeDetail();
+    const parts = contributions.map(item => {
+      const metric = scoreMetric.get(item.metric);
+      return `<span>${metric ? metric.label : item.metric}: <b>${Math.round(item.ratio * 100)}</b></span>`;
+    }).join("");
+    const detail = el("div", {class: "index-detail", role: "region", "aria-live": "polite"},
+      `<b>${entity.id} · ${label}</b><br>${parts}`);
+    const cell = el("td", {colspan: String(columns.length)});
+    cell.appendChild(detail);
+    openDetail = el("tr", {class: "index-detail-row", id: "index-detail-active"});
+    openDetail.appendChild(cell);
+    anchor.after(openDetail);
+    openButton = button;
+    button.setAttribute("aria-expanded", "true");
+    button.setAttribute("aria-controls", openDetail.id);
+  };
   const draw = () => {
+    closeDetail();
     table.replaceChildren();
     const head = el("tr");
     columns.forEach((column, ci) => {
@@ -867,13 +896,13 @@ function buildScoreSummary(view) {
         `<span style="display:inline-flex;align-items:center;gap:7px">${key(row.entity)}${row.entity.id}${isStale(row.entity.id) ? " \u2020" : ""}</span>`));
       tr.appendChild(el("td")).appendChild(indexButton(
         row.overall, null, null, "Show group contributions",
-        () => showDetail(row.entity, "Overall Core",
+        button => showDetail(button, tr, row.entity, "Overall Core",
           row.groups.filter(group => numeric(group.ratio)).map(group => ({
             metric: group.label, ratio: group.ratio,
           })))));
       row.groups.forEach(group => tr.appendChild(el("td")).appendChild(indexButton(
         group.ratio, group.coverage, group.total, "Show metric contributions",
-        () => showDetail(row.entity, group.label, group.contributions))));
+        button => showDetail(button, tr, row.entity, group.label, group.contributions))));
       const integrity = scoreIntegrity(row);
       tr.appendChild(el("td", {},
         `<span class="index-badge ${integrity[1]}" title="${integrity[2]}">${integrity[0]}</span>`));
@@ -882,7 +911,6 @@ function buildScoreSummary(view) {
   };
   draw();
   card.appendChild(table);
-  card.appendChild(detail);
   section.appendChild(card);
   return section;
 }

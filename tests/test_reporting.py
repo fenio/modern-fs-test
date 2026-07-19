@@ -161,9 +161,11 @@ class DashboardRegressionTests(unittest.TestCase):
             self.assertIn(legacy_section, html)
         self.assertIn("Summary indices", html)
         self.assertIn("content.appendChild(buildScoreSummary(view));", html)
-        self.assertIn("Click a column header to sort.", html)
+        self.assertIn("select a score to expand its normalized contributions", html)
         self.assertIn('class: "index-sort"', html)
         self.assertIn("let indexSortCol = null", html)
+        self.assertIn('class: "index-detail-row"', html)
+        self.assertIn('"aria-expanded": "false"', html)
         self.assertIn(
             "all detailed dashboard views remain available below",
             html,
