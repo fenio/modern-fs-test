@@ -393,6 +393,22 @@ class AuditRegressionTests(unittest.TestCase):
 
 
 class ResultSchemaTests(unittest.TestCase):
+    def write_complete_result_set(self, directory):
+        configurations = json.loads(SCHEMA.read_text())["configurations"]
+        template = json.loads(
+            (FIXTURE_RUNS / "101" / "result-btrfs-raid1.json").read_text()
+        )
+        paths = []
+        for entity in configurations:
+            fs, layout = entity.split("/", 1)
+            document = template.copy()
+            document["fs"] = fs
+            document["layout"] = layout
+            path = Path(directory) / f"result-{fs}-{layout}.json"
+            path.write_text(json.dumps(document))
+            paths.append(path)
+        return paths
+
     def test_manifest_preserves_dashboard_metric_contract(self):
         schema = json.loads(SCHEMA.read_text())
         metrics = schema["metrics"]
@@ -454,6 +470,62 @@ class ResultSchemaTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("validated 5 result file(s)", result.stdout)
+
+    def test_complete_result_set_is_accepted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = self.write_complete_result_set(tmp)
+
+            result = run_script(VALIDATOR, "--complete-set", *paths)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(
+            f"validated {len(paths)} result file(s) as a complete matrix",
+            result.stdout,
+        )
+
+    def test_incomplete_result_set_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = self.write_complete_result_set(tmp)
+            missing = paths.pop()
+            missing_document = json.loads(missing.read_text())
+            missing_entity = (
+                f"{missing_document['fs']}/{missing_document['layout']}"
+            )
+            missing.unlink()
+
+            result = run_script(VALIDATOR, "--complete-set", *paths)
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(
+            f"result set missing configurations: {missing_entity}",
+            result.stderr,
+        )
+
+    def test_duplicate_result_configuration_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = self.write_complete_result_set(tmp)
+            duplicate = Path(tmp) / "duplicate.json"
+            shutil.copy2(paths[0], duplicate)
+
+            result = run_script(VALIDATOR, "--complete-set", *paths, duplicate)
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(
+            "result set has duplicate configurations: ext4/single",
+            result.stderr,
+        )
+
+    def test_history_publication_requires_complete_result_set(self):
+        workflow = BENCH_WORKFLOW.read_text()
+
+        validation = workflow.index("Validate complete result set")
+        publication = workflow.index("Append results to history branch")
+
+        self.assertLess(validation, publication)
+        self.assertIn(
+            "validate-result.py --complete-set incoming/result-*.json",
+            workflow,
+        )
 
     def test_unversioned_results_use_v1_contract(self):
         result = run_script(

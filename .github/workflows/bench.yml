@@ -169,6 +169,11 @@ jobs:
           path: incoming
           merge-multiple: true
 
+      # Failed matrix attempts may still reach publish; keep their partial
+      # artifacts out of history until a retry supplies the full matrix.
+      - name: Validate complete result set
+        run: python3 scripts/validate-result.py --complete-set incoming/result-*.json
+
       - name: Append results to history branch
         run: |
           git config user.name "github-actions[bot]"
