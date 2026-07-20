@@ -23,6 +23,7 @@ SEED_SIZE=${SEED_SIZE:-7G}
 CHURN_RUNTIME=${CHURN_RUNTIME:-120}
 DEGRADED_RUNTIME=${DEGRADED_RUNTIME:-30}
 RECONCILE_BEFORE_DEGRADE=${RECONCILE_BEFORE_DEGRADE:-0}
+BCACHEFS_RECONCILE_TIMEOUT=${BCACHEFS_RECONCILE_TIMEOUT:-5m}
 
 mkdir -p "$WORK_ROOT" "$OUTPUT_DIR"
 WORK_DIR=$(mktemp -d "$WORK_ROOT/bcachefs-ec-evacuate.XXXXXX")
@@ -83,8 +84,21 @@ fio --output-format=json --output="$OUTPUT_DIR/fio-churn.json" \
 
 if [ "$RECONCILE_BEFORE_DEGRADE" = 1 ]; then
   log "wait for EC reconcile before device loss"
-  timeout 10m bcachefs reconcile wait -t erasure_code "$MNT" \
-    || timeout 10m bcachefs reconcile wait "$MNT"
+  bcachefs_debug_dump "$OUTPUT_DIR/reconcile-wait-before.txt" "$MNT" 0
+  reconcile_rc=0
+  timeout --signal=TERM --kill-after=30s "$BCACHEFS_RECONCILE_TIMEOUT" \
+    bcachefs reconcile wait -t erasure_code "$MNT" || reconcile_rc=$?
+  if [ "$reconcile_rc" -ne 0 ] && [ "$reconcile_rc" -ne 124 ] \
+     && [ "$reconcile_rc" -ne 137 ]; then
+    log "typed reconcile wait exited $reconcile_rc; try generic syntax"
+    reconcile_rc=0
+    timeout --signal=TERM --kill-after=30s "$BCACHEFS_RECONCILE_TIMEOUT" \
+      bcachefs reconcile wait "$MNT" || reconcile_rc=$?
+  fi
+  if [ "$reconcile_rc" -ne 0 ]; then
+    bcachefs_debug_dump "$OUTPUT_DIR/reconcile-wait-failed.txt" "$MNT" 1
+    die "EC reconcile wait failed or timed out with status $reconcile_rc"
+  fi
 fi
 
 bcachefs_debug_dump "$OUTPUT_DIR/before-offline.txt" "$MNT" 0

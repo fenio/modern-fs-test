@@ -7,9 +7,6 @@ on:
         description: 'Wait for pending EC reconcile before offlining a member'
         type: boolean
         default: false
-  # Temporary branch trigger used to validate the reproducer before merge.
-  push:
-    branches: [fix/bcachefs-ec-evacuation]
 
 permissions:
   contents: read
@@ -36,6 +33,7 @@ jobs:
             WORK_ROOT=/mnt \
             REPRO_ATTEMPT=${{ matrix.attempt }} \
             RECONCILE_BEFORE_DEGRADE=${{ inputs.reconcile_before_degrade && '1' || '0' }} \
+            BCACHEFS_RECONCILE_TIMEOUT=5m \
             BCACHEFS_EVAC_DIAG_AFTER=180 \
             BCACHEFS_EVAC_TIMEOUT=10m \
             scripts/repro-bcachefs-ec-evacuate.sh

@@ -34,6 +34,39 @@ moving contexts stop making progress. Existing benchmark artifacts prove the
 blocking command but do not contain enough kernel state to establish that both
 failures have the same cause.
 
+## Reduced reproduction result
+
+The first four-attempt run of the standalone case reproduced the stall once:
+
+- [workflow run 29740996573](https://github.com/fenio/modern-fs-benchmark/actions/runs/29740996573)
+- [failed attempt](https://github.com/fenio/modern-fs-benchmark/actions/runs/29740996573/job/88347471981)
+- [diagnostic artifact](https://github.com/fenio/modern-fs-benchmark/actions/runs/29740996573/artifacts/8460769148)
+
+Three identical attempts completed successfully. The fourth moved 3.97 GiB in
+about 90 seconds, reached exactly 2.69 MiB, then remained unchanged until the
+10-minute command timeout.
+
+The live diagnostic snapshot showed:
+
+- bcachefs tools and module 1.38.8 on kernel 7.0.0-1009-azure
+- the reconcile thread in uninterruptible sleep in
+  `__bch2_closure_sync_timeout` from `do_reconcile`
+- two `reconcile_work` moving contexts with zero bytes and zero IO in flight
+- the evacuating member retaining 708 KiB user data and 2 MiB parity
+- 789 MiB pending EC reconcile and 708 KiB high-priority replica work
+- one 2+2 stripe in flight
+- only 4 MiB of 799 MiB EC stripe-buffer memory in use
+
+The last point does not match the stripe-buffer exhaustion reported in issue
+#1182. This may be a different reconcile/evacuation forward-progress bug, or a
+second path to the same closure wait. The captured artifact is intended to let
+upstream distinguish those cases.
+
+A preliminary four-attempt control with `RECONCILE_BEFORE_DEGRADE=1` had one
+successful wait and three timeouts before any member was offlined. That points
+to an EC reconcile problem independent of device evacuation. The reproducer
+captures a full diagnostic snapshot when this optional barrier times out.
+
 ## Standalone reproducer
 
 The script creates five disposable 16 GiB sparse loop devices, formats four as
@@ -104,8 +137,11 @@ Each attempt records:
 > evacuation on a four-device 2+2 EC filesystem. The test offlines one member,
 > performs 30 seconds of 4 KiB random writes and reads while degraded, brings
 > the member online, adds a fifth device, then evacuates the original member.
-> Evacuation normally moves about 3.48 GiB in 57 seconds. In repeated failures,
-> it reaches 332-900 KiB remaining and stays there for more than 45 minutes.
-> Identical fresh-runner retries sometimes pass. This resembles issue #1182;
-> the attached bundle includes reconcile status, new_stripes, moving contexts,
-> blocked tasks, pressure, and the kernel log captured while stalled.
+> The standalone case reproduced on its first four-attempt run: three attempts
+> passed and one moved 3.97 GiB, stopped at exactly 2.69 MiB, and timed out after
+> ten minutes. At the stall, bch-reconcile was in D state in
+> __bch2_closure_sync_timeout from do_reconcile; moving contexts showed no IO in
+> flight; the member retained 708 KiB user data plus 2 MiB parity. Unlike issue
+> #1182, internal/new_stripes showed only 4 MiB of 799 MiB stripe-buffer memory
+> in use. The attached bundle includes usage, reconcile status, new_stripes,
+> moving contexts, blocked tasks, pressure, and the kernel log.
