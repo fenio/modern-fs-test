@@ -1,0 +1,40 @@
+name: reproduce-bcachefs-ec-evacuation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    name: attempt ${{ matrix.attempt }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        attempt: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install bcachefs
+        run: sudo scripts/install-deps.sh bcachefs
+
+      - name: Run minimal EC evacuation reproducer
+        run: |
+          sudo env \
+            OUTPUT_DIR="$PWD/repro-output" \
+            WORK_ROOT=/mnt \
+            REPRO_ATTEMPT=${{ matrix.attempt }} \
+            BCACHEFS_EVAC_DIAG_AFTER=180 \
+            BCACHEFS_EVAC_TIMEOUT=10m \
+            scripts/repro-bcachefs-ec-evacuate.sh
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: bcachefs-ec-evacuation-${{ matrix.attempt }}
+          path: repro-output/
+          if-no-files-found: warn

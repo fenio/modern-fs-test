@@ -16,7 +16,13 @@ SCHEMA = ROOT / "scripts" / "result-schema.json"
 VALIDATOR = ROOT / "scripts" / "validate-result.py"
 RUN_BENCH = ROOT / "scripts" / "run-bench.sh"
 XFS_BACKEND = ROOT / "scripts" / "fs" / "xfs.sh"
+BCACHEFS_BACKEND = ROOT / "scripts" / "fs" / "bcachefs.sh"
+BCACHEFS_DEBUG = ROOT / "scripts" / "lib" / "bcachefs-debug.sh"
+BCACHEFS_REPRO = ROOT / "scripts" / "repro-bcachefs-ec-evacuate.sh"
 BENCH_WORKFLOW = ROOT / ".github" / "workflows" / "bench.yml"
+BCACHEFS_REPRO_WORKFLOW = (
+    ROOT / ".github" / "workflows" / "repro-bcachefs-ec.yml"
+)
 
 METRIC_CONTRACT = [
     ("seqwrite_mbps", "Sequential write", "MB/s", "higher"),
@@ -547,6 +553,7 @@ class ResultSchemaTests(unittest.TestCase):
             "validate-result.py --complete-set incoming/result-*.json",
             workflow,
         )
+        self.assertIn("name: Deploy dashboard\n    needs: publish", workflow)
 
     def test_unversioned_results_use_v1_contract(self):
         result = run_script(
@@ -765,6 +772,37 @@ class BackendConfigurationTests(unittest.TestCase):
         source = XFS_BACKEND.read_text()
 
         self.assertIn("-o refreservation=none", source)
+
+    def test_bcachefs_ec_evacuation_is_bounded_and_diagnostic(self):
+        backend = BCACHEFS_BACKEND.read_text()
+        debug = BCACHEFS_DEBUG.read_text()
+
+        self.assertIn("bcachefs_evacuate_with_diagnostics", backend)
+        self.assertIn('die "bcachefs EC evacuation failed or timed out"', backend)
+        for evidence in (
+            "bcachefs reconcile status",
+            "internal/moving_ctxts",
+            "internal/new_stripes",
+            "options/ec_stripe_buf_limit",
+            "options/move_bytes_in_flight",
+            "/proc/sysrq-trigger",
+            "dmesg --color=never",
+        ):
+            self.assertIn(evidence, debug)
+
+    def test_standalone_bcachefs_ec_reproducer_matches_failure_path(self):
+        reproducer = BCACHEFS_REPRO.read_text()
+        workflow = BCACHEFS_REPRO_WORKFLOW.read_text()
+
+        for command in (
+            "bcachefs format -f --erasure_code --replicas=3",
+            "bcachefs device offline --force",
+            "bcachefs device add",
+            "bcachefs_evacuate_with_diagnostics",
+        ):
+            self.assertIn(command, reproducer)
+        self.assertIn("workflow_dispatch", workflow)
+        self.assertIn("if: always()", workflow)
 
 
 if __name__ == "__main__":

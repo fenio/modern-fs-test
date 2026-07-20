@@ -157,9 +157,6 @@ jobs:
     concurrency:
       group: pages
       cancel-in-progress: false
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
 
@@ -215,5 +212,17 @@ jobs:
         with:
           path: site
 
+  deploy:
+    name: Deploy dashboard
+    needs: publish
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-26.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - id: deployment
         uses: actions/deploy-pages@v5

@@ -6,6 +6,9 @@
 # shellcheck disable=SC2034  # consumed by run-bench.sh
 FS_REFLINK=1
 
+# shellcheck source=../lib/bcachefs-debug.sh
+source "$SCRIPT_DIR/lib/bcachefs-debug.sh"
+
 fs_setup() {
   modprobe bcachefs 2>/dev/null || true
   grep -qw bcachefs /proc/filesystems \
@@ -154,9 +157,18 @@ fs_degrade() {
 }
 
 fs_rebuild() {
-  bcachefs device online "${DEVICES[1]}"
-  bcachefs device add "$MNT" "$SPARE_DEV"
-  bcachefs device evacuate "${DEVICES[1]}"
+  bcachefs device online "${DEVICES[1]}" \
+    || die "failed to bring ${DEVICES[1]} online before rebuild"
+  bcachefs device add "$MNT" "$SPARE_DEV" \
+    || die "failed to add rebuild spare $SPARE_DEV"
+  if [ "${LAYOUT:-replicas2}" = ec ]; then
+    if ! bcachefs_evacuate_with_diagnostics \
+         "$MNT" "${DEVICES[1]}" "$RESULTS_DIR/raw/$BENCH_ID-evacuate"; then
+      die "bcachefs EC evacuation failed or timed out"
+    fi
+  elif ! bcachefs device evacuate "${DEVICES[1]}"; then
+    die "bcachefs evacuation failed"
+  fi
 }
 
 fs_teardown() {
