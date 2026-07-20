@@ -46,6 +46,29 @@ Three identical attempts completed successfully. The fourth moved 3.97 GiB in
 about 90 seconds, reached exactly 2.69 MiB, then remained unchanged until the
 10-minute command timeout.
 
+A subsequent rate-estimation campaign launched 24 unmodified attempts across
+six workflow runs:
+
+- [29750893500](https://github.com/fenio/modern-fs-benchmark/actions/runs/29750893500)
+- [29750893803](https://github.com/fenio/modern-fs-benchmark/actions/runs/29750893803)
+- [29750893959](https://github.com/fenio/modern-fs-benchmark/actions/runs/29750893959)
+- [29750894329](https://github.com/fenio/modern-fs-benchmark/actions/runs/29750894329)
+- [29750894380](https://github.com/fenio/modern-fs-benchmark/actions/runs/29750894380)
+- [29754238355](https://github.com/fenio/modern-fs-benchmark/actions/runs/29754238355)
+
+Three attempts hung during the two-minute write-churn stage and were cancelled
+by the 30-minute job timeout before device loss; they are excluded from the
+evacuation rate. Of the 21 attempts that reached evacuation, 18 passed and 3
+stalled at fixed remainders of 64 KiB, 1 MiB, and 8 MiB. The observed failure
+rate is therefore 14.3% (95% Wilson interval 5.0%-34.6%). Including the first
+four-attempt run gives 4 stalls in 25 valid evacuation trials, or 16%.
+
+The three rate-estimation failure bundles are:
+
+- [64 KiB remainder](https://github.com/fenio/modern-fs-benchmark/actions/runs/29750893803/artifacts/8465161410)
+- [1 MiB remainder](https://github.com/fenio/modern-fs-benchmark/actions/runs/29750894329/artifacts/8465485018)
+- [8 MiB remainder](https://github.com/fenio/modern-fs-benchmark/actions/runs/29750893500/artifacts/8465282227)
+
 The live diagnostic snapshot showed:
 
 - bcachefs tools and module 1.38.8 on kernel 7.0.0-1009-azure
@@ -134,11 +157,13 @@ Each attempt records:
 > evacuation on a four-device 2+2 EC filesystem. The test offlines one member,
 > performs 30 seconds of 4 KiB random writes and reads while degraded, brings
 > the member online, adds a fifth device, then evacuates the original member.
-> The standalone case reproduced on its first four-attempt run: three attempts
-> passed and one moved 3.97 GiB, stopped at exactly 2.69 MiB, and timed out after
-> ten minutes. At the stall, bch-reconcile was in D state in
+> Across 25 valid standalone evacuation attempts, 21 passed and 4 stalled
+> (16%). The fixed remainders were 64 KiB, 1 MiB, 2.69 MiB, and 8 MiB. Three
+> additional attempts that hung during pre-degrade write churn are excluded.
+> At the initial 2.69 MiB stall, bch-reconcile was in D state in
 > __bch2_closure_sync_timeout from do_reconcile; moving contexts showed no IO in
-> flight; the member retained 708 KiB user data plus 2 MiB parity. Unlike issue
-> #1182, internal/new_stripes showed only 4 MiB of 799 MiB stripe-buffer memory
-> in use. The attached bundle includes usage, reconcile status, new_stripes,
-> moving contexts, blocked tasks, pressure, and the kernel log.
+> flight; the member retained 708 KiB user data plus 2 MiB parity. The later
+> failure bundles likewise show zero reconcile movement and only 4 MiB of 799
+> MiB stripe-buffer memory in use, unlike issue #1182. The attached bundles
+> include usage, reconcile status, new_stripes, moving contexts, blocked tasks,
+> pressure, and the kernel log.
