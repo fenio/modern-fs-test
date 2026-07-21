@@ -10,6 +10,28 @@ source "$SCRIPT_DIR/lib/layered.sh"
 FS_REFLINK=1
 
 ZPOOL=fsbench
+ZVOL_DEV=
+
+zvol_resolve_device() {
+  local candidate name i
+  for i in $(seq 1 50); do
+    if [ -b "/dev/zvol/$ZPOOL/zvol" ]; then
+      echo "/dev/zvol/$ZPOOL/zvol"
+      return
+    fi
+    for candidate in /dev/zd*; do
+      [ -b "$candidate" ] || continue
+      name=$(zvol_id "$candidate" 2>/dev/null || true)
+      if [ "$name" = "$ZPOOL/zvol" ]; then
+        echo "$candidate"
+        return
+      fi
+    done
+    udevadm settle 2>/dev/null || true
+    sleep 0.1
+  done
+  die "ZFS volume $ZPOOL/zvol has no block device"
+}
 
 fs_setup() {
   if [ "${LAYOUT:-single}" = zvol ]; then
@@ -30,15 +52,16 @@ fs_setup() {
     zfs create -V "$(( avail * 3 / 4 ))" -o volblocksize=16k \
       -o refreservation=none "$ZPOOL/zvol"
     udevadm settle 2>/dev/null || sleep 2
-    mkfs.xfs -fq "/dev/zvol/$ZPOOL/zvol"
-    mount -o noatime "/dev/zvol/$ZPOOL/zvol" "$MNT"
+    ZVOL_DEV=$(zvol_resolve_device)
+    mkfs.xfs -fq "$ZVOL_DEV"
+    mount -t xfs -o noatime "$ZVOL_DEV" "$MNT"
     mkdir -p "$MNT/data"
     DATA="$MNT/data"
     return 0
   fi
   layered_make_dev
   mkfs.xfs -fq "$LAYERED_DEV"
-  mount -o noatime "$LAYERED_DEV" "$MNT"
+  mount -t xfs -o noatime "$LAYERED_DEV" "$MNT"
   mkdir -p "$MNT/data"
   # shellcheck disable=SC2034  # consumed by run-bench.sh
   DATA="$MNT/data"
@@ -79,7 +102,8 @@ fs_snapscale_delete() {
 fs_remount() {
   if zvol_case; then
     umount "$MNT"
-    mount -o noatime "/dev/zvol/$ZPOOL/zvol" "$MNT"
+    ZVOL_DEV=$(zvol_resolve_device)
+    mount -t xfs -o noatime "$ZVOL_DEV" "$MNT"
     return
   fi
   layered_remount
@@ -166,7 +190,8 @@ fs_drop_caches() {
     for d in "${DEVICES[@]}"; do args+=(-d "$d"); done
     zpool import "${args[@]}" "$ZPOOL"
     udevadm settle 2>/dev/null || sleep 2
-    mount -o noatime "/dev/zvol/$ZPOOL/zvol" "$MNT"
+    ZVOL_DEV=$(zvol_resolve_device)
+    mount -t xfs -o noatime "$ZVOL_DEV" "$MNT"
     return
   fi
   drop_caches

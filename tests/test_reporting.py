@@ -9,6 +9,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+FLAKE = ROOT / "flake.nix"
+NIXOS_MODULE = ROOT / "nix" / "module.nix"
 FIXTURE_RUNS = ROOT / "tests" / "fixtures" / "runs"
 DASHBOARD = ROOT / "scripts" / "make-dashboard.py"
 AUDIT = ROOT / "scripts" / "audit-results.py"
@@ -20,6 +22,10 @@ BCACHEFS_BACKEND = ROOT / "scripts" / "fs" / "bcachefs.sh"
 BCACHEFS_DEBUG = ROOT / "scripts" / "lib" / "bcachefs-debug.sh"
 BCACHEFS_REPRO = ROOT / "scripts" / "repro-bcachefs-ec-evacuate.sh"
 BENCH_WORKFLOW = ROOT / ".github" / "workflows" / "bench.yml"
+HARDWARE_BENCH_WORKFLOW = (
+    ROOT / ".github" / "workflows" / "bench-real-hw.yml"
+)
+PAGES_WORKFLOW = ROOT / ".github" / "workflows" / "publish-pages.yml"
 BCACHEFS_REPRO_WORKFLOW = (
     ROOT / ".github" / "workflows" / "repro-bcachefs-ec.yml"
 )
@@ -553,7 +559,30 @@ class ResultSchemaTests(unittest.TestCase):
             "validate-result.py --complete-set incoming/result-*.json",
             workflow,
         )
-        self.assertIn("name: Deploy dashboard\n    needs: publish", workflow)
+        self.assertIn("name: Store hosted results", workflow)
+        self.assertNotIn("actions/deploy-pages", workflow)
+
+    def test_hardware_results_use_separate_history_and_dashboard(self):
+        hosted = BENCH_WORKFLOW.read_text()
+        hardware = HARDWARE_BENCH_WORKFLOW.read_text()
+        pages = PAGES_WORKFLOW.read_text()
+
+        self.assertIn("git -C data push origin results-data", hosted)
+        self.assertNotIn("modern-fs-benchmark-run", hosted)
+        self.assertNotIn("BENCH_DEVICES", hosted)
+        self.assertIn("results-real-hw", hardware)
+        self.assertIn(
+            "git -C hardware-data push origin results-real-hw", hardware
+        )
+        self.assertIn('startswith("/dev/")', hardware)
+        self.assertNotIn("actions/deploy-pages", hardware)
+        self.assertIn("standard-data/runs", pages)
+        self.assertIn("hardware-data/runs", pages)
+        self.assertIn("site/real-hw/index.html", pages)
+        self.assertLess(
+            pages.index("actions/upload-pages-artifact"),
+            pages.index("actions/deploy-pages"),
+        )
 
     def test_unversioned_results_use_v1_contract(self):
         result = run_script(
@@ -772,6 +801,8 @@ class BackendConfigurationTests(unittest.TestCase):
         source = XFS_BACKEND.read_text()
 
         self.assertIn("-o refreservation=none", source)
+        self.assertIn("zvol_resolve_device", source)
+        self.assertIn('name=$(zvol_id "$candidate"', source)
 
     def test_bcachefs_ec_evacuation_is_bounded_and_diagnostic(self):
         backend = BCACHEFS_BACKEND.read_text()
@@ -803,6 +834,79 @@ class BackendConfigurationTests(unittest.TestCase):
             self.assertIn(command, reproducer)
         self.assertIn("workflow_dispatch", workflow)
         self.assertIn("if: always()", workflow)
+
+    def test_hardware_workflow_requires_managed_runner(self):
+        workflow = HARDWARE_BENCH_WORKFLOW.read_text()
+
+        self.assertIn("runs-on: [self-hosted, linux, x64, fs-benchmark]", workflow)
+        self.assertIn("modern-fs-benchmark-run", workflow)
+        self.assertIn("managed benchmark wrapper is not installed", workflow)
+        self.assertIn("$GITHUB_RUN_ID", workflow)
+        self.assertIn("/var/lib/modern-fs-benchmark/results/", workflow)
+        self.assertNotIn("scripts/install-deps.sh", workflow)
+        self.assertIn("ENABLE_HARDWARE_BENCHMARKS", workflow)
+
+    def test_hosted_and_hardware_workflows_use_same_matrix(self):
+        def matrix_profile(path):
+            workflow = path.read_text()
+            matrix = workflow[
+                workflow.index("      matrix:\n") : workflow.index("    env:\n")
+            ]
+            pattern = re.compile(
+                r"^\s+- fs: (\S+)\n\s+layout: (\S+)(.*?)"
+                r"(?=^\s+- fs:|\Z)",
+                re.MULTILINE | re.DOTALL,
+            )
+            profile = []
+            for fs, layout, options in pattern.findall(matrix):
+                dev_size = re.search(r"^\s+dev_size: (\S+)", options, re.MULTILINE)
+                aging = re.search(r"^\s+aging_iters: (\d+)", options, re.MULTILINE)
+                profile.append(
+                    (
+                        fs,
+                        layout,
+                        dev_size.group(1) if dev_size else "16G",
+                        int(aging.group(1)) if aging else 100,
+                    )
+                )
+            return profile
+
+        hosted = matrix_profile(BENCH_WORKFLOW)
+        hardware = matrix_profile(HARDWARE_BENCH_WORKFLOW)
+
+        self.assertEqual(len(hosted), 26)
+        self.assertEqual(hardware, hosted)
+
+    def test_nixos_module_keeps_machine_policy_in_cluster_configuration(self):
+        flake = FLAKE.read_text()
+        module = NIXOS_MODULE.read_text()
+
+        self.assertIn("nixosModules.modern-fs-benchmark", flake)
+        self.assertIn("config.boot.kernelPackages.bcachefs", module)
+        self.assertNotIn("linuxPackages_", module)
+        self.assertIn("devices must contain exactly four devices", module)
+        self.assertIn("modern-fs-benchmark-run", module)
+        self.assertIn('command = "${runBenchmark}/bin/', module)
+        self.assertIn("config.boot.zfs.package", module)
+        self.assertIn("config.boot.zfs.modulePackage", module)
+        self.assertIn('[ "dm_raid" "dm_snapshot" "dm_integrity" ]', module)
+        self.assertIn("another filesystem benchmark is already running", module)
+        self.assertIn("zfsSingleDevice", module)
+        self.assertIn("34359738368", module)
+        self.assertIn("resolves to a duplicate block device", module)
+        self.assertNotIn("boot.supportedFilesystems", module)
+        self.assertNotIn("results directory must be inside", module)
+        self.assertIn("packages =", flake)
+        self.assertIn("apps =", flake)
+
+    def test_real_device_validation_precedes_signature_wipe(self):
+        common = (ROOT / "scripts" / "lib" / "common.sh").read_text()
+
+        validation = common.index('[ -b "$dev" ]')
+        mount_check = common.index('is mounted — refusing')
+        wipe = common.index('wipefs --all --force "$dev"')
+        self.assertLess(validation, wipe)
+        self.assertLess(mount_check, wipe)
 
 
 if __name__ == "__main__":

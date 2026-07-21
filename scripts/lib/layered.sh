@@ -22,6 +22,9 @@ layered_make_dev() {
       LAYERED_DEV=/dev/md/fsbench
       ;;
     lvm-*)
+      modprobe dm_raid
+      modprobe dm_snapshot
+      case "$LAYOUT" in *-int) modprobe dm_integrity ;; esac
       # Each PV is wrapped in a dm-linear target so the degraded phase can
       # simulate a disk failure by swapping one wrapper to dm-error — the
       # same technique the lvm2 test suite uses (loop detach doesn't work:
@@ -77,7 +80,7 @@ layered_remount() {
   case "${LAYOUT:-single}" in
     lvm-*)
       umount "$MNT"
-      mount -o noatime "/dev/$VG/bench" "$MNT"
+      mount -t "$FS" -o noatime "/dev/$VG/bench" "$MNT"
       ;;
     *) return 1 ;;
   esac

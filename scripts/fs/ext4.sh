@@ -20,7 +20,7 @@ fs_setup() {
       ;;
   esac
   mkfs.ext4 -Fq "$LAYERED_DEV"
-  mount -o noatime "$LAYERED_DEV" "$MNT"
+  mount -t ext4 -o noatime "$LAYERED_DEV" "$MNT"
   mkdir -p "$MNT/data"
   # shellcheck disable=SC2034  # consumed by run-bench.sh
   DATA="$MNT/data"

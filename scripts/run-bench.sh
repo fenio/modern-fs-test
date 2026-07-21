@@ -707,6 +707,7 @@ fi
 
 # --- Assemble result -------------------------------------------------------
 write_result() {
+DEVICE_SIZE_BYTES=$(blockdev --getsize64 "${DEVICES[0]}")
 AGING_JSON=$(printf '%s\n' "${AGING_BW[@]}" | jq -s '.')
 if [ "${#SNAP_MS[@]}" -gt 0 ]; then
   # median, not mean — VM clock steps can corrupt individual samples
@@ -724,6 +725,7 @@ jq -n \
   --arg date "$(date -u +%FT%TZ)" \
   --arg devices "${BENCH_DEVICES:-loop}" \
   --argjson ndev "${#DEVICES[@]}" \
+  --argjson device_size_bytes "$DEVICE_SIZE_BYTES" \
   --argjson seqwrite_mbps "$SEQWRITE_MBPS" \
   --argjson randwrite_iops "$RANDWRITE_IOPS" \
   --argjson fsync_p99_ms "$FSYNC_P99_MS" \
@@ -785,7 +787,7 @@ jq -n \
   --argjson calib_randwrite_iops "$CALIB_RAND_IOPS" \
   '{schema_version: 4,
     fs: $fs, layout: $layout, kernel: $kernel, version: $version, date: $date,
-    devices: $devices, ndev: $ndev,
+    devices: $devices, ndev: $ndev, device_size_bytes: $device_size_bytes,
     calibration: {seqwrite_mbps: $calib_seqwrite_mbps,
                   randwrite_iops: $calib_randwrite_iops},
     results: {seqwrite_mbps: $seqwrite_mbps,

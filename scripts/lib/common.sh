@@ -142,11 +142,15 @@ fs_version() { echo ""; }
 # Populate DEVICES[] — real devices from BENCH_DEVICES, or loop devices.
 setup_devices() {
   if [ -n "${BENCH_DEVICES:-}" ]; then
+    if [ "${FS:-}/${LAYOUT:-}" = zfs/single ] && [ -n "${BENCH_ZFS_SINGLE_DEVICE:-}" ]; then
+      BENCH_DEVICES=$BENCH_ZFS_SINGLE_DEVICE
+    fi
     read -ra DEVICES <<< "$BENCH_DEVICES"
     SPARE_DEV=${BENCH_SPARE_DEVICE:-}
     log "using real devices: ${DEVICES[*]}${SPARE_DEV:+ (spare: $SPARE_DEV)}"
-    local dev
-    for dev in "${DEVICES[@]}" ${SPARE_DEV:+"$SPARE_DEV"}; do
+    local dev real_devices=("${DEVICES[@]}")
+    [ -z "$SPARE_DEV" ] || real_devices+=("$SPARE_DEV")
+    for dev in "${real_devices[@]}"; do
       [ -b "$dev" ] || die "$dev is not a block device"
       if grep -q "^$dev " /proc/mounts || lsblk -no MOUNTPOINTS "$dev" | grep -q .; then
         die "$dev (or a partition on it) is mounted — refusing"
@@ -155,6 +159,12 @@ setup_devices() {
         die "$dev contains a filesystem/signature — set BENCH_WIPE=1 to allow wiping it"
       fi
     done
+    if [ "${BENCH_WIPE:-0}" = 1 ]; then
+      for dev in "${real_devices[@]}"; do
+        wipefs --all --force "$dev"
+      done
+      udevadm settle
+    fi
   else
     log "creating $NDEV loop devices of $DEV_SIZE (+1 spare) in $DISK_DIR"
     mkdir -p "$DISK_DIR"
