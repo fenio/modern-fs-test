@@ -1,29 +1,23 @@
-name: fs-bench
+name: fs-bench-real-hw
 
 on:
-  push:
-    branches: [main]
-    # docs-only commits must not trigger (or, via the concurrency group,
-    # CANCEL) benchmark runs - a README push once killed a 23-job run
-    paths-ignore:
-      - '**.md'
   schedule:
-    - cron: '17 */2 * * *'  # every 2 hours at :17 (GitHub may delay/skip under load)
+    # The suite writes roughly 1.7 TB per run; keep hardware wear bounded.
+    - cron: '43 3 * * 0'
   workflow_dispatch:
 
-# A newer push supersedes older push runs (their code is stale anyway);
-# cron/dispatch runs keep unique groups and never cancel each other.
 concurrency:
-  group: fs-bench-${{ github.event_name == 'push' && 'push' || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'push' }}
+  group: fs-bench-real-hw
+  cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
   bench:
-    runs-on: ubuntu-26.04
-    timeout-minutes: 60
+    if: github.event_name == 'workflow_dispatch' || vars.ENABLE_HARDWARE_BENCHMARKS == 'true'
+    runs-on: [self-hosted, linux, x64, fs-benchmark]
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -34,9 +28,6 @@ jobs:
             layout: md-raid10
           - fs: ext4
             layout: lvm-raid10
-            # dm-snapshot copies each origin write into every snapshot
-            # lacking it, and each snapshot pre-allocates VG space — 100
-            # old-style LVM snapshots is unusable by design
             aging_iters: 8
           - fs: xfs
             layout: single
@@ -61,26 +52,19 @@ jobs:
             layout: single
           - fs: zfs
             layout: mirror
-            # 128K recordsize pins ~the whole aging file per snapshot —
-            # ~10 snapshots is what this pool size honestly affords
             aging_iters: 10
           - fs: zfs
             layout: mirror-8k
           - fs: zfs
             layout: single
-            # one device = 16G usable; 128K-recordsize snapshot retention
-            # needs more or the pool exhausts mid-aging
             dev_size: 32G
             aging_iters: 10
           - fs: zfs
             layout: raidz2
-            # default recordsize — same snapshot-retention math as mirror
             aging_iters: 10
           - fs: zfs
             layout: raidz1
             aging_iters: 10
-          # raidz + native encryption (community request): parity math and
-          # AES-256-GCM stack, vs mirror-enc which pays only the crypto
           - fs: zfs
             layout: raidz1-enc
             aging_iters: 10
@@ -93,7 +77,6 @@ jobs:
             layout: single
           - fs: bcachefs
             layout: ec
-          # encryption variants: native vs one-LUKS-per-device vs LUKS-over-raid
           - fs: zfs
             layout: mirror-enc
             aging_iters: 10
@@ -108,20 +91,24 @@ jobs:
       AGING_ITERS: ${{ matrix.aging_iters || '100' }}
       AGING_IO: 64M
       SNAPSCALE_COUNT: 500
-      # fail fast on slow shared VMs (normal runners: ~400 MB/s, ~14.5k IOPS)
       CALIB_MIN_SEQ_MBPS: 300
       CALIB_MIN_RAND_IOPS: 8000
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install dependencies
-        run: sudo scripts/install-deps.sh ${{ matrix.fs }}
-
-      - name: Run benchmark
+      - name: Run benchmark through managed wrapper
         run: |
-          sudo --preserve-env=DEV_SIZE,AGING_ITERS,AGING_IO,SNAPSCALE_COUNT,CALIB_MIN_SEQ_MBPS,CALIB_MIN_RAND_IOPS \
-            RESULTS_DIR="$PWD/results" \
-            scripts/run-bench.sh ${{ matrix.fs }} ${{ matrix.layout }}
+          runner=$(command -v modern-fs-benchmark-run) || {
+            echo 'managed benchmark wrapper is not installed' >&2
+            exit 1
+          }
+          sudo "$runner" \
+            "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" \
+            "${{ matrix.fs }}" "${{ matrix.layout }}" \
+            "$DEV_SIZE" "$AGING_ITERS" "$AGING_IO" "$SNAPSCALE_COUNT" \
+            "$CALIB_MIN_SEQ_MBPS" "$CALIB_MIN_RAND_IOPS"
+          mkdir -p results
+          cp -a "/var/lib/modern-fs-benchmark/results/$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT/${{ matrix.fs }}-${{ matrix.layout }}/." results/
 
       - name: Write job summary
         if: always()
@@ -131,56 +118,60 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: results-${{ matrix.fs }}-${{ matrix.layout }}
+          name: hardware-results-${{ matrix.fs }}-${{ matrix.layout }}
           path: results/
           if-no-files-found: ignore
 
   publish:
-    name: Store hosted results
+    name: Store hardware results
     needs: bench
-    if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}
+    if: ${{ !cancelled() && needs.bench.result != 'skipped' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-26.04
     permissions:
       contents: write
     concurrency:
-      group: results-data
+      group: results-real-hw
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/download-artifact@v8
         with:
-          pattern: results-*
+          pattern: hardware-results-*
           path: incoming
           merge-multiple: true
 
-      # Failed matrix attempts may still reach publish; keep their partial
-      # artifacts out of history until a retry supplies the full matrix.
-      - name: Validate complete result set
+      - name: Validate complete hardware result set
         run: python3 scripts/validate-result.py --complete-set incoming/result-*.json
 
-      - name: Append results to history branch
+      - name: Verify hardware provenance
+        run: |
+          jq -e -s \
+            'all(.[]; (.devices | type == "string" and startswith("/dev/")))' \
+            incoming/result-*.json >/dev/null
+
+      - name: Append results to hardware history branch
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           set +e
-          git ls-remote --exit-code --heads origin results-data >/dev/null 2>&1
+          git ls-remote --exit-code --heads origin results-real-hw >/dev/null 2>&1
           status=$?
           set -e
           if [ "$status" -eq 0 ]; then
-            git fetch origin results-data
-            git worktree add data origin/results-data
-            git -C data checkout -B results-data
+            git fetch origin results-real-hw
+            git worktree add hardware-data origin/results-real-hw
+            git -C hardware-data checkout -B results-real-hw
           elif [ "$status" -eq 2 ]; then
-            git worktree add --detach data
-            git -C data checkout --orphan results-data
-            git -C data rm -rf --quiet . || true
+            git worktree add --detach hardware-data
+            git -C hardware-data checkout --orphan results-real-hw
+            git -C hardware-data rm -rf --quiet . || true
           else
-            echo "failed to query results-data (git exit $status)" >&2
+            echo "failed to query results-real-hw (git exit $status)" >&2
             exit "$status"
           fi
-          mkdir -p "data/runs/${{ github.run_number }}"
-          cp incoming/result-*.json "data/runs/${{ github.run_number }}/"
-          git -C data add runs
-          git -C data commit -m "results from run ${{ github.run_id }}" || echo "nothing new"
-          git -C data push origin results-data
+          mkdir -p "hardware-data/runs/${{ github.run_number }}"
+          cp incoming/result-*.json "hardware-data/runs/${{ github.run_number }}/"
+          git -C hardware-data add runs
+          git -C hardware-data commit -m "hardware results from run ${{ github.run_id }}" || echo "nothing new"
+          git -C hardware-data push origin results-real-hw

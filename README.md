@@ -166,12 +166,63 @@ sudo BENCH_DEVICES="/dev/sdb /dev/sdc /dev/sdd /dev/sde" BENCH_WIPE=1 \
 Safety: devices must be unmounted, and anything carrying a filesystem
 signature is refused unless `BENCH_WIPE=1`. **Listed devices are wiped.**
 
-To drive real hardware from GitHub: register the machine as a
-[self-hosted runner](https://docs.github.com/en/actions/hosting-your-own-runners),
-then trigger the workflow manually (`workflow_dispatch`) with `runs_on` set to
-your runner label and `devices` set to the disks to use. Scale up workload
-sizes via env (`SEQ_SIZE`, `AGING_SIZE`, `AGING_ITERS`, …) — CI defaults are
-sized for 4×16 GB loop files.
+For an unmanaged hardware run, invoke `scripts/run-bench.sh` directly with
+`BENCH_DEVICES`, `BENCH_SPARE_DEVICE`, and `BENCH_WIPE=1`. The dedicated
+self-hosted GitHub workflow instead requires the NixOS module below; it never
+accepts device paths from workflow inputs. Workload sizes can be adjusted with
+`SEQ_SIZE`, `AGING_SIZE`, `AGING_ITERS`, and the other documented environment
+variables. CI defaults are sized for 4×16 GB loop files.
+
+#### NixOS / deploy-rs
+
+This repository is also a flake with a reusable NixOS module and benchmark
+package. Cluster configurations can import `nixosModules.modern-fs-benchmark`;
+the module installs a dedicated Actions
+runner, the filesystem tools and matching out-of-tree modules for the
+cluster-selected kernel, and a restricted root wrapper with fixed device paths.
+It deliberately does not select a kernel or configure machine-wide boot,
+networking, users, or partitioning.
+
+```nix
+{
+  inputs.modern-fs-benchmark.url =
+    "github:fenio/modern-fs-benchmark";
+
+  # In the target node's modules list:
+  services.modern-fs-benchmark = {
+    enable = true;
+    repository = "https://github.com/fenio/modern-fs-benchmark";
+    tokenFile = "/run/secrets/modern-fs-benchmark-runner";
+    runnerName = "farm3";
+    runnerLabels = [ "fs-benchmark" ];
+    devices = [
+      "/dev/disk/by-partlabel/fsbench-nvme0-a"
+      "/dev/disk/by-partlabel/fsbench-nvme1-a"
+      "/dev/disk/by-partlabel/fsbench-nvme0-b"
+      "/dev/disk/by-partlabel/fsbench-nvme1-b"
+    ];
+    spareDevice = "/dev/disk/by-partlabel/fsbench-nvme0-spare";
+    zfsSingleDevice = "/dev/disk/by-partlabel/fsbench-nvme0-zfs-single";
+  };
+}
+```
+
+The four member devices and spare must each be exactly 16 GiB. The dedicated
+`zfsSingleDevice` must be exactly 32 GiB, matching the hosted-runner matrix.
+For an unregistered manual run, the same immutable package is available as
+`nix run .#manual -- <fs> <layout>`; provide the documented `BENCH_*`
+environment variables and run it as root.
+
+The master cluster flake owns the node assignment and deploy-rs deployment, so
+the runner can move to another machine without changing benchmark code. The
+dedicated `bench-real-hw.yml` workflow targets the `fs-benchmark` label and
+uses only the module's fixed devices. It publishes hardware history to
+`results-real-hw` and the dashboard under `/real-hw/`; the existing `bench.yml`
+workflow remains hosted-only and continues publishing `results-data` at the
+root dashboard. Hardware runs can be dispatched manually. The weekly schedule
+is enabled only when the repository variable `ENABLE_HARDWARE_BENCHMARKS` is
+set to `true`. The token file should contain a fine-grained PAT because
+ephemeral runners re-register after every job.
 
 **The plan is bigger than loop devices.** CI is the regression-tracking
 harness; the goal is to gather dedicated hardware and run the REAL tests

@@ -9,6 +9,7 @@
     "date": {"type": "string", "nonempty": true},
     "devices": {"type": "string", "nonempty": true},
     "ndev": {"type": "integer", "nonnegative": true},
+    "device_size_bytes": {"type": "integer", "nonnegative": true, "required": false},
     "calibration": {
       "type": "object",
       "properties": {

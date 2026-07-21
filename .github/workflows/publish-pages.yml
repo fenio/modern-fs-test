@@ -1,0 +1,80 @@
+name: publish-pages
+
+on:
+  workflow_run:
+    workflows: [fs-bench, fs-bench-real-hw]
+    types: [completed]
+  workflow_dispatch:
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  actions: write
+
+jobs:
+  deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-26.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - name: Check out hosted result history
+        run: |
+          git fetch origin results-data
+          git worktree add standard-data origin/results-data
+
+      - name: Check out hardware result history
+        run: |
+          set +e
+          git ls-remote --exit-code --heads origin results-real-hw >/dev/null 2>&1
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            git fetch origin results-real-hw
+            git worktree add hardware-data origin/results-real-hw
+          elif [ "$status" -eq 2 ]; then
+            mkdir -p hardware-data/runs
+          else
+            echo "failed to query results-real-hw (git exit $status)" >&2
+            exit "$status"
+          fi
+
+      - name: Build dashboards
+        run: |
+          python3 scripts/make-dashboard.py --runs standard-data/runs --out site/index.html \
+            --repo "https://github.com/${{ github.repository }}"
+          if compgen -G "hardware-data/runs/*/result-*.json" >/dev/null; then
+            python3 scripts/make-dashboard.py --runs hardware-data/runs --out site/real-hw/index.html \
+              --repo "https://github.com/${{ github.repository }}"
+          fi
+
+      - uses: actions/configure-pages@v6
+
+      - name: Drop stale pages artifacts from earlier attempts
+        run: |
+          for id in $(gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts?per_page=100" \
+                        --jq '.artifacts[] | select(.name == "github-pages") | .id'); do
+            gh api -X DELETE "repos/${{ github.repository }}/actions/artifacts/$id"
+          done
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+      - id: deployment
+        uses: actions/deploy-pages@v5

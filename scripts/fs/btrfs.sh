@@ -18,7 +18,7 @@ fs_setup() {
     # raid1c3 metadata: parity-raid metadata is strongly discouraged
     # (write hole) — this is the pairing the btrfs docs recommend
     mkfs.btrfs -f -d raid6 -m raid1c3 "${DEVICES[@]}"
-    mount -o noatime "${DEVICES[0]}" "$MNT"
+    mount -t btrfs -o noatime "${DEVICES[0]}" "$MNT"
     btrfs subvolume create "$MNT/data"
     DATA="$MNT/data"
     return 0
@@ -31,7 +31,7 @@ fs_setup() {
   else
     mkfs.btrfs -f -d "$profile" -m "$profile" "${DEVICES[@]}"
   fi
-  mount -o noatime "${DEVICES[0]}" "$MNT"
+  mount -t btrfs -o noatime "${DEVICES[0]}" "$MNT"
   btrfs subvolume create "$MNT/data"
   DATA="$MNT/data"
 }
@@ -68,10 +68,10 @@ fs_degrade() {
   [ "${LAYOUT:-raid1}" != single ] || return 1
   umount "$MNT"
   if ! losetup -d "${DEVICES[1]}" 2>/dev/null; then
-    mount -o noatime "${DEVICES[0]}" "$MNT"
+    mount -t btrfs -o noatime "${DEVICES[0]}" "$MNT"
     return 1
   fi
-  mount -o degraded,noatime "${DEVICES[0]}" "$MNT"
+  mount -t btrfs -o degraded,noatime "${DEVICES[0]}" "$MNT"
 }
 
 fs_rebuild() {
@@ -88,7 +88,7 @@ fs_teardown() {
 
 fs_remount() {
   umount "$MNT"
-  mount -o noatime "${DEVICES[0]}" "$MNT"
+  mount -t btrfs -o noatime "${DEVICES[0]}" "$MNT"
 }
 
 fs_snap_list() { btrfs subvolume list "$MNT" >/dev/null; }
