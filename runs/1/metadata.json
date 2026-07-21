@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "host": "farm3",
+  "provider": "Hetzner",
+  "execution": "manual",
+  "source_commit": "41c29f1c2f3effcbb793fe3b81021f9d452e9c89",
+  "kernel": "6.18.39",
+  "started_at": "2026-07-20T21:56:00Z",
+  "completed_at": "2026-07-21T08:19:38Z",
+  "configurations": 26,
+  "device_layout": {
+    "members": "4 x 16 GiB",
+    "spare": "1 x 16 GiB",
+    "zfs_single": "1 x 32 GiB"
+  },
+  "notes": [
+    "xfs/zvol was rerun after adding robust /dev/zd* discovery.",
+    "ext4/lvm-raid10, xfs/lvm-raid10, and zfs/mirror-8k reproducibly measured idle p99 latency above under-load p99 latency; results are retained as observed."
+  ]
+}
