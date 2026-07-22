@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "host": "farm3",
+  "provider": "Hetzner",
+  "execution": "manual",
+  "source_commit": "0c0376ad401ce3664d33da24213e2a9f5c16433f",
+  "kernel": "6.18.39",
+  "started_at": "2026-07-21T21:12:23Z",
+  "completed_at": "2026-07-22T00:23:28Z",
+  "configurations": 26,
+  "configuration_order": "same as hardware run 1",
+  "device_layout": {
+    "members": "4 x 16 GiB",
+    "spare": "1 x 16 GiB",
+    "zfs_single": "1 x 32 GiB"
+  },
+  "notes": [
+    "This run adds hardware-only fio-default 8- and 16-worker random read/write measurements.",
+    "The shard-aware write series was introduced in later commit 3c10db4 and is not present in this run.",
+    "ext4/lvm-raid10, xfs/lvm-raid10, and zfs/mirror-8k measured idle p99 latency above under-load p99 latency; results are retained as observed.",
+    "ext4/lvm-raid10 and ext4/md-raid6 reported data_intact=false after block-level corruption; non-checksumming layouts can flap with read-balancing luck, so the observed verdicts are retained."
+  ]
+}
