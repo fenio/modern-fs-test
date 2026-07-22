@@ -102,7 +102,7 @@ jobs:
             echo 'managed benchmark wrapper is not installed' >&2
             exit 1
           }
-          sudo "$runner" --capabilities | grep -qx hardware-random-scaling-v1 || {
+          sudo "$runner" --capabilities | grep -qx hardware-random-scaling-v2 || {
             echo 'managed benchmark wrapper does not support hardware random scaling' >&2
             exit 1
           }
@@ -154,6 +154,9 @@ jobs:
             'all(.[];
               (.devices | type == "string" and startswith("/dev/")) and
               ([.results.randwrite8_iops, .results.randwrite16_iops,
+                .results.randwrite4_sharded_iops,
+                .results.randwrite8_sharded_iops,
+                .results.randwrite16_sharded_iops,
                 .results.randread8_iops, .results.randread16_iops] |
                all(.[]; type == "number" and . >= 0)))' \
             incoming/result-*.json >/dev/null

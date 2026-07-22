@@ -44,7 +44,7 @@ let
     runtimeInputs = benchmarkPackages;
     text = ''
       if [[ $# -eq 1 && $1 == --capabilities ]]; then
-        echo hardware-random-scaling-v1
+        printf '%s\n' hardware-random-scaling-v1 hardware-random-scaling-v2
         exit 0
       fi
 

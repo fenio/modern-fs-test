@@ -79,6 +79,24 @@ METRIC_CONTRACT = [
 HARDWARE_METRIC_CONTRACT = [
     ("randwrite8_iops", "Random write, 8 workers", "IOPS", "higher"),
     ("randwrite16_iops", "Random write, 16 workers", "IOPS", "higher"),
+    (
+        "randwrite4_sharded_iops",
+        "Random write, 4 shard-aware workers",
+        "IOPS",
+        "higher",
+    ),
+    (
+        "randwrite8_sharded_iops",
+        "Random write, 8 shard-aware workers",
+        "IOPS",
+        "higher",
+    ),
+    (
+        "randwrite16_sharded_iops",
+        "Random write, 16 shard-aware workers",
+        "IOPS",
+        "higher",
+    ),
     ("randread8_iops", "Random read, 8 workers", "IOPS", "higher"),
     ("randread16_iops", "Random read, 16 workers", "IOPS", "higher"),
 ]
@@ -486,9 +504,9 @@ class ResultSchemaTests(unittest.TestCase):
                 if metric["display"] == "card"
             ],
             METRIC_CONTRACT[:3]
-            + HARDWARE_METRIC_CONTRACT[:2]
+            + HARDWARE_METRIC_CONTRACT[:5]
             + METRIC_CONTRACT[3:7]
-            + HARDWARE_METRIC_CONTRACT[2:]
+            + HARDWARE_METRIC_CONTRACT[5:]
             + METRIC_CONTRACT[7:],
         )
         self.assertEqual(len({metric["key"] for metric in metrics}), len(metrics))
@@ -498,6 +516,12 @@ class ResultSchemaTests(unittest.TestCase):
             if not metric.get("required", True)
         }
         self.assertEqual(optional, {metric[0] for metric in HARDWARE_METRIC_CONTRACT})
+        dashboard = DASHBOARD.read_text()
+        score_model = dashboard[
+            dashboard.index("const SCORE_MODEL") : dashboard.index("const scoreMetric")
+        ]
+        for key, _label, _unit, _better in HARDWARE_METRIC_CONTRACT:
+            self.assertNotIn(key, score_model)
 
     def test_configurations_match_benchmark_matrix(self):
         schema = json.loads(SCHEMA.read_text())
@@ -824,13 +848,16 @@ fio_json() {
 }
 jq() { printf '123.5\n'; }
 phase_random_write
-printf '%s %s\n' "$RANDWRITE8_IOPS" "$RANDWRITE16_IOPS"
+printf '%s %s %s %s %s\n' \
+  "$RANDWRITE8_IOPS" "$RANDWRITE16_IOPS" \
+  "$RANDWRITE4_SHARDED_IOPS" "$RANDWRITE8_SHARDED_IOPS" \
+  "$RANDWRITE16_SHARDED_IOPS"
 '''
             result = run_benchmark_shell(source, tmp)
             calls = (Path(tmp) / "fio-calls").read_text().splitlines()
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout.strip(), "null null")
+        self.assertEqual(result.stdout.strip(), "null null null null null")
         self.assertEqual(len(calls), 2)
         self.assertFalse(any("--numjobs=8" in call for call in calls))
         self.assertFalse(any("--numjobs=16" in call for call in calls))
@@ -844,6 +871,7 @@ BENCH_DEVICES=/dev/fake
 BENCH_HARDWARE_RANDOM_SCALING=1
 log() { :; }
 rm() { printf 'rm\n' >> "$DATA/events"; }
+sync() { printf 'sync\n' >> "$DATA/events"; }
 fio_json() {
   printf '%s\n' "$1" >> "$DATA/events"
   printf '%s\n' "$*" >> "$DATA/fio-calls"
@@ -851,22 +879,44 @@ fio_json() {
 }
 jq() { printf '123.5\n'; }
 phase_random_write
-printf '%s %s\n' "$RANDWRITE8_IOPS" "$RANDWRITE16_IOPS"
+printf '%s %s %s %s %s\n' \
+  "$RANDWRITE8_IOPS" "$RANDWRITE16_IOPS" \
+  "$RANDWRITE4_SHARDED_IOPS" "$RANDWRITE8_SHARDED_IOPS" \
+  "$RANDWRITE16_SHARDED_IOPS"
 '''
             result = run_benchmark_shell(source, tmp)
             calls = (Path(tmp) / "fio-calls").read_text().splitlines()
             events = (Path(tmp) / "events").read_text().splitlines()
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout.strip(), "123.5 123.5")
-        self.assertEqual(len(calls), 4)
+        self.assertEqual(result.stdout.strip(), "123.5 123.5 123.5 123.5 123.5")
+        self.assertEqual(len(calls), 7)
         self.assertTrue(any("--size=128M" in call and "--numjobs=8" in call for call in calls))
         self.assertTrue(any("--size=64M" in call and "--numjobs=16" in call for call in calls))
+        sharded = [call for call in calls if call.startswith("randwrite-sharded")]
+        self.assertEqual(len(sharded), 3)
+        expected = {
+            "randwrite-sharded4": ("--size=256M", "--numjobs=4"),
+            "randwrite-sharded8": ("--size=128M", "--numjobs=8"),
+            "randwrite-sharded16": ("--size=64M", "--numjobs=16"),
+        }
+        for call in sharded:
+            size, jobs = expected[call.split()[0]]
+            self.assertIn(size, call)
+            self.assertIn(jobs, call)
+            self.assertIn("--nrfiles=1", call)
+            self.assertIn("--thread=0", call)
+            self.assertIn("--create_serialize=0", call)
+            self.assertIn("--filename_format=$jobname.$jobnum.$filenum", call)
+            self.assertIn("--group_reporting", call)
         self.assertEqual(
             events,
             [
                 "randwrite", "rm", "randwrite-par", "rm",
-                "randwrite-par8", "rm", "randwrite-par16", "rm",
+                "randwrite-par8", "rm", "randwrite-par16", "rm", "sync",
+                "randwrite-sharded4", "rm", "sync",
+                "randwrite-sharded8", "rm", "sync",
+                "randwrite-sharded16", "rm", "sync",
             ],
         )
 
@@ -994,7 +1044,7 @@ class BackendConfigurationTests(unittest.TestCase):
         self.assertIn("modern-fs-benchmark-run", workflow)
         self.assertIn("managed benchmark wrapper is not installed", workflow)
         self.assertIn("--capabilities", workflow)
-        self.assertIn("hardware-random-scaling-v1", workflow)
+        self.assertIn("hardware-random-scaling-v2", workflow)
         self.assertIn("$GITHUB_RUN_ID", workflow)
         self.assertIn("/var/lib/modern-fs-benchmark/results/", workflow)
         self.assertNotIn("scripts/install-deps.sh", workflow)
@@ -1051,7 +1101,7 @@ class BackendConfigurationTests(unittest.TestCase):
         self.assertIn("34359738368", module)
         self.assertIn("resolves to a duplicate block device", module)
         self.assertIn("export BENCH_HARDWARE_RANDOM_SCALING=1", module)
-        self.assertIn("hardware-random-scaling-v1", module)
+        self.assertIn("hardware-random-scaling-v2", module)
         self.assertNotIn("BENCH_HARDWARE_RANDOM_SCALING", BENCH_WORKFLOW.read_text())
         self.assertNotIn("boot.supportedFilesystems", module)
         self.assertNotIn("results directory must be inside", module)

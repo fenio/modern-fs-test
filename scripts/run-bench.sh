@@ -94,6 +94,9 @@ phase_random_write() {
 local out
 RANDWRITE8_IOPS=null
 RANDWRITE16_IOPS=null
+RANDWRITE4_SHARDED_IOPS=null
+RANDWRITE8_SHARDED_IOPS=null
+RANDWRITE16_SHARDED_IOPS=null
 log "phase: random write 4k, ${RUNTIME}s"
 out=$(fio_json randwrite --directory="$DATA" --rw=randwrite --bs=4k \
   --size=1G --runtime="$RUNTIME" --time_based --fdatasync=16)
@@ -122,6 +125,32 @@ if hardware_random_scaling_enabled; then
     --numjobs=16 --group_reporting)
   RANDWRITE16_IOPS=$(jq '.jobs[0].write.iops' "$out")
   rm -f "$DATA"/randwrite-par16*
+  sync
+
+  # fio normally creates every numjobs file in the coordinator before
+  # forking. Process-local setup lets PID-sharded filesystems allocate each
+  # inode from the shard selected for the worker that will write it.
+  out=$(fio_json randwrite-sharded4 --directory="$DATA" --rw=randwrite --bs=4k \
+    --size=256M --runtime="$RUNTIME" --time_based --fdatasync=16 \
+    --numjobs=4 --nrfiles=1 --thread=0 --create_serialize=0 \
+    "--filename_format=\$jobname.\$jobnum.\$filenum" --group_reporting)
+  RANDWRITE4_SHARDED_IOPS=$(jq '.jobs[0].write.iops' "$out")
+  rm -f "$DATA"/randwrite-sharded4*
+  sync
+  out=$(fio_json randwrite-sharded8 --directory="$DATA" --rw=randwrite --bs=4k \
+    --size=128M --runtime="$RUNTIME" --time_based --fdatasync=16 \
+    --numjobs=8 --nrfiles=1 --thread=0 --create_serialize=0 \
+    "--filename_format=\$jobname.\$jobnum.\$filenum" --group_reporting)
+  RANDWRITE8_SHARDED_IOPS=$(jq '.jobs[0].write.iops' "$out")
+  rm -f "$DATA"/randwrite-sharded8*
+  sync
+  out=$(fio_json randwrite-sharded16 --directory="$DATA" --rw=randwrite --bs=4k \
+    --size=64M --runtime="$RUNTIME" --time_based --fdatasync=16 \
+    --numjobs=16 --nrfiles=1 --thread=0 --create_serialize=0 \
+    "--filename_format=\$jobname.\$jobnum.\$filenum" --group_reporting)
+  RANDWRITE16_SHARDED_IOPS=$(jq '.jobs[0].write.iops' "$out")
+  rm -f "$DATA"/randwrite-sharded16*
+  sync
 fi
 }
 
@@ -762,6 +791,9 @@ jq -n \
   --argjson randwrite_iops "$RANDWRITE_IOPS" \
   --argjson randwrite8_iops "$RANDWRITE8_IOPS" \
   --argjson randwrite16_iops "$RANDWRITE16_IOPS" \
+  --argjson randwrite4_sharded_iops "$RANDWRITE4_SHARDED_IOPS" \
+  --argjson randwrite8_sharded_iops "$RANDWRITE8_SHARDED_IOPS" \
+  --argjson randwrite16_sharded_iops "$RANDWRITE16_SHARDED_IOPS" \
   --argjson fsync_p99_ms "$FSYNC_P99_MS" \
   --argjson fsync_p999_ms "$FSYNC_P999_MS" \
   --argjson randread_iops "$RANDREAD_IOPS" \
@@ -887,6 +919,9 @@ jq -n \
               (if $include_hardware_random_scaling then {
                 randwrite8_iops: $randwrite8_iops,
                 randwrite16_iops: $randwrite16_iops,
+                randwrite4_sharded_iops: $randwrite4_sharded_iops,
+                randwrite8_sharded_iops: $randwrite8_sharded_iops,
+                randwrite16_sharded_iops: $randwrite16_sharded_iops,
                 randread8_iops: $randread8_iops,
                 randread16_iops: $randread16_iops
               } else {} end))}' \

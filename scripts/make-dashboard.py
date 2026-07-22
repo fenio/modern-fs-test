@@ -78,6 +78,23 @@ DOCS = {
         "worker, and fdatasync every 16 IOs. The aggregate working set remains 1G. "
         "This metric is not collected on hosted GitHub runners.",
         [("run-bench.sh (Phase 2)", "scripts/run-bench.sh")]),
+    "randwrite4_sharded_iops": (
+        "The hardware-only 4-worker random-write workload with fio process mode and "
+        "create_serialize=0. Each worker creates and preallocates its own 256M file, "
+        "allowing PID-sharded filesystems to distribute inode and extent btree keys. "
+        "The aggregate working set remains 1G; files are removed and synced between "
+        "worker counts.",
+        [("run-bench.sh (Phase 2)", "scripts/run-bench.sh")]),
+    "randwrite8_sharded_iops": (
+        "The shard-aware hardware-only random-write workload with 8 worker processes, "
+        "create_serialize=0, and one worker-created 128M file per process. The aggregate "
+        "working set remains 1G.",
+        [("run-bench.sh (Phase 2)", "scripts/run-bench.sh")]),
+    "randwrite16_sharded_iops": (
+        "The shard-aware hardware-only random-write workload with 16 worker processes, "
+        "create_serialize=0, and one worker-created 64M file per process. The aggregate "
+        "working set remains 1G.",
+        [("run-bench.sh (Phase 2)", "scripts/run-bench.sh")]),
     "smalltree_create4_ms": (
         "The 20k-file tree created by 4 concurrent workers on disjoint directory "
         "subsets — metadata lock contention (btrfs tree locks vs XFS per-AG "
