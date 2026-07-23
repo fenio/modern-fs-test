@@ -1639,7 +1639,8 @@ app.appendChild(el("footer", {},
     and how to run it on real hardware are in the README. Ideas for workloads and
     tuning variants welcome — open an issue. Curious about trying bcachefs outside
     a benchmark? <a href="https://github.com/nasty-project/nasty">NASty</a> is a
-    NixOS-based NAS appliance built around it.`));
+    NixOS-based NAS appliance built around it. Source: <a href="${DATA.repo}/blob/main/LICENSE">Apache-2.0</a>;
+    result data: <a href="${DATA.repo}/blob/main/LICENSE-DATA">CC BY 4.0</a>.`));
 </script>
 </body>
 </html>
