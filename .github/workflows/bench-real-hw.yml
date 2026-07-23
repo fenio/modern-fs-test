@@ -183,6 +183,7 @@ jobs:
           fi
           mkdir -p "hardware-data/runs/${{ github.run_number }}"
           cp incoming/result-*.json "hardware-data/runs/${{ github.run_number }}/"
-          git -C hardware-data add runs
+          cp LICENSE-DATA hardware-data/LICENSE
+          git -C hardware-data add LICENSE runs
           git -C hardware-data commit -m "hardware results from run ${{ github.run_id }}" || echo "nothing new"
           git -C hardware-data push origin results-real-hw

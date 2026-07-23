@@ -634,12 +634,14 @@ class ResultSchemaTests(unittest.TestCase):
         pages = PAGES_WORKFLOW.read_text()
 
         self.assertIn("git -C data push origin results-data", hosted)
+        self.assertIn("cp LICENSE-DATA data/LICENSE", hosted)
         self.assertNotIn("modern-fs-benchmark-run", hosted)
         self.assertNotIn("BENCH_DEVICES", hosted)
         self.assertIn("results-real-hw", hardware)
         self.assertIn(
             "git -C hardware-data push origin results-real-hw", hardware
         )
+        self.assertIn("cp LICENSE-DATA hardware-data/LICENSE", hardware)
         self.assertIn('startswith("/dev/")', hardware)
         self.assertNotIn("actions/deploy-pages", hardware)
         self.assertIn("standard-data/runs", pages)

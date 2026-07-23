@@ -332,3 +332,12 @@ Infrastructure:
 - [ ] Parse bcachefs scrub found/repaired counts (verdict via md5 works;
       the counts aren't in 1.38-tools output)
 - [ ] Normalize cross-job comparisons by the calibration anchor in the dashboard
+
+## License
+
+Copyright 2026 Bartosz Fenski.
+
+Source code, configuration, workflows, and documentation are licensed under the
+[Apache License 2.0](LICENSE). Published benchmark result datasets, including
+the `results-data` and `results-real-hw` history branches, are licensed under
+[Creative Commons Attribution 4.0 International](LICENSE-DATA).

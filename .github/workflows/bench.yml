@@ -181,6 +181,7 @@ jobs:
           fi
           mkdir -p "data/runs/${{ github.run_number }}"
           cp incoming/result-*.json "data/runs/${{ github.run_number }}/"
-          git -C data add runs
+          cp LICENSE-DATA data/LICENSE
+          git -C data add LICENSE runs
           git -C data commit -m "results from run ${{ github.run_id }}" || echo "nothing new"
           git -C data push origin results-data
