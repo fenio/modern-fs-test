@@ -46,6 +46,10 @@ NOISY = {
 
 def capabilities_for(entity, document, configurations):
     capabilities = set(configurations.get(entity, []))
+    version = document.get("schema_version", 1)
+    if entity.startswith("zfs/") and (not isinstance(version, int) or version < 5):
+        # ZFS block cloning was omitted from the contract before schema v5.
+        capabilities.discard("reflink")
     if document.get("devices") != "loop":
         # Real-hardware runs skip the destructive small-array ENOSPC phase
         # and may not have the spare device required for rebuild testing.

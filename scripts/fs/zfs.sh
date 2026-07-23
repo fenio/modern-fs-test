@@ -2,8 +2,10 @@
 # ZFS backend. Layout "mirror": striped mirror pairs (raid10-like) —
 # devices are paired in order, so pass an even number of devices.
 
+# New OpenZFS 2.2+ pools enable block_cloning unless a compatibility set
+# restricts their features; coreutils 9.2+ exposes it via --reflink.
 # shellcheck disable=SC2034  # consumed by run-bench.sh
-FS_REFLINK=0  # block cloning exists in 2.2+ but is off by default; revisit
+FS_REFLINK=1
 POOL=fsbench
 
 fs_setup() {

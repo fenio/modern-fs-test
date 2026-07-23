@@ -18,6 +18,7 @@ SCHEMA = ROOT / "scripts" / "result-schema.json"
 VALIDATOR = ROOT / "scripts" / "validate-result.py"
 RUN_BENCH = ROOT / "scripts" / "run-bench.sh"
 XFS_BACKEND = ROOT / "scripts" / "fs" / "xfs.sh"
+ZFS_BACKEND = ROOT / "scripts" / "fs" / "zfs.sh"
 BCACHEFS_BACKEND = ROOT / "scripts" / "fs" / "bcachefs.sh"
 BCACHEFS_DEBUG = ROOT / "scripts" / "lib" / "bcachefs-debug.sh"
 BCACHEFS_REPRO = ROOT / "scripts" / "repro-bcachefs-ec-evacuate.sh"
@@ -353,6 +354,21 @@ class AuditRegressionTests(unittest.TestCase):
             result.stdout,
         )
 
+    def test_reflink_null_is_rejected_for_current_zfs_results(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runs = Path(tmp) / "runs"
+            shutil.copytree(FIXTURE_RUNS, runs)
+            result_file = runs / "101" / "result-zfs-mirror.json"
+            shutil.copy2(runs / "100" / result_file.name, result_file)
+            document = json.loads(result_file.read_text())
+            document["schema_version"] = 5
+            result_file.write_text(json.dumps(document))
+
+            result = run_audit(runs)
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("zfs/mirror.reflink_ms: unexpectedly null", result.stdout)
+
     def test_missing_latest_metric_is_a_hard_anomaly(self):
         with tempfile.TemporaryDirectory() as tmp:
             runs = Path(tmp) / "runs"
@@ -496,7 +512,7 @@ class ResultSchemaTests(unittest.TestCase):
         schema = json.loads(SCHEMA.read_text())
         metrics = schema["metrics"]
 
-        self.assertEqual(schema["schema_version"], 4)
+        self.assertEqual(schema["schema_version"], 5)
         self.assertEqual(
             [
                 (metric["key"], metric["label"], metric["unit"], metric["better"])
@@ -1001,6 +1017,11 @@ printf '%s %s %s %s %s %s %s\n' \
 
 
 class BackendConfigurationTests(unittest.TestCase):
+    def test_zfs_enables_block_cloning_for_new_pools(self):
+        source = ZFS_BACKEND.read_text()
+
+        self.assertIn("FS_REFLINK=1", source)
+
     def test_xfs_zvol_does_not_reserve_space_needed_by_snapshots(self):
         source = XFS_BACKEND.read_text()
 

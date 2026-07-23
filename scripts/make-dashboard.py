@@ -281,8 +281,8 @@ DOCS = {
         [("run-bench.sh (Phase 6)", "scripts/run-bench.sh")]),
     "reflink_ms": (
         "cp --reflink=always of the 2G file — a metadata-only clone. btrfs clones the "
-        "extent tree in one operation (~ms); bcachefs reflinks per extent (~200ms); ext4 "
-        "cannot; ZFS block cloning is off by default. The table also records whether "
+        "extent tree in one operation (~ms); bcachefs reflinks per extent (~200ms); "
+        "OpenZFS 2.2+ uses its Block Reference Table; ext4 cannot. The table also records whether "
         "FIEMAP (filefrag -v) actually reports the clone's extents as shared — the deep "
         "plumbing check. Phase 6 (divergence).",
         [("run-bench.sh (Phase 6, divergence)", "scripts/run-bench.sh")]),

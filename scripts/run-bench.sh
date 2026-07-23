@@ -854,7 +854,7 @@ jq -n \
   --argjson calib_seqwrite_mbps "$CALIB_SEQ_MBPS" \
   --argjson calib_randwrite_iops "$CALIB_RAND_IOPS" \
   --argjson include_hardware_random_scaling "$include_hardware_random_scaling" \
-  '{schema_version: 4,
+  '{schema_version: 5,
     fs: $fs, layout: $layout, kernel: $kernel, version: $version, date: $date,
     devices: $devices, ndev: $ndev, device_size_bytes: $device_size_bytes,
     calibration: {seqwrite_mbps: $calib_seqwrite_mbps,
